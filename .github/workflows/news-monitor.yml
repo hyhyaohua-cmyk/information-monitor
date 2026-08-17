@@ -49,7 +49,7 @@ jobs:
 
       - name: 保存基线和去重状态
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: monitor-state
           path: news_monitor.sqlite3
@@ -66,10 +66,10 @@ jobs:
           done
 
       - name: 配置 GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: 上传静态报告
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: public
 
@@ -82,4 +82,4 @@ jobs:
     steps:
       - name: 发布报告
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
