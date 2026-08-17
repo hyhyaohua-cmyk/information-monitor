@@ -1,0 +1,9 @@
+news_monitor.sqlite3
+news_monitor.sqlite3-*
+news_monitor.log
+news_monitor.pre_*.sqlite3
+public/
+__pycache__/
+*.pyc
+.DS_Store
+*.app/

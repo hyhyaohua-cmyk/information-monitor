@@ -1,0 +1,85 @@
+name: 刷新信息监控
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: 选择要刷新的类别
+        required: true
+        default: 新闻
+        type: choice
+        options:
+          - 新闻
+          - 智库
+          - 央行
+
+permissions:
+  contents: read
+  actions: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: information-monitor-pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 读取程序
+        uses: actions/checkout@v5
+
+      - name: 恢复最近一次数据库
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=monitor-state&per_page=100" --jq '.artifacts | sort_by(.created_at) | reverse | .[0].id // empty')"
+          if [ -n "$artifact_id" ]; then
+            gh api -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/monitor-state.zip
+            unzip -o /tmp/monitor-state.zip -d /tmp/monitor-state
+            if [ -f /tmp/monitor-state/news_monitor.sqlite3 ]; then
+              cp /tmp/monitor-state/news_monitor.sqlite3 ./news_monitor.sqlite3
+            fi
+          fi
+
+      - name: 刷新并生成静态报告
+        run: python3 -B github_actions.py --category "${{ inputs.category }}"
+
+      - name: 保存基线和去重状态
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-state
+          path: news_monitor.sqlite3
+          retention-days: 90
+          compression-level: 9
+
+      - name: 清理更旧的状态备份
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=monitor-state&per_page=100" --jq '.artifacts | sort_by(.created_at) | reverse | .[1:][] | .id' | while read -r artifact_id; do
+            [ -n "$artifact_id" ] && gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
+          done
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传静态报告
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: refresh
+    steps:
+      - name: 发布报告
+        id: deployment
+        uses: actions/deploy-pages@v4
