@@ -30,9 +30,30 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(set(app.SITE_CATEGORIES), set(ids))
         self.assertEqual({app.SITE_CATEGORIES[site_id] for site_id in ids}, set(app.CATEGORIES))
-        self.assertEqual(len(app.NEWS_SITES), 44)
+        self.assertEqual(len(app.NEWS_SITES), 41)
         self.assertEqual(len(app.THINK_TANK_SITES), 36)
         self.assertEqual(len(app.CENTRAL_BANK_SITES), 13)
+
+    def test_removed_sites_are_cleaned_without_losing_deduplication(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+            CREATE TABLE sites(id TEXT PRIMARY KEY);
+            CREATE TABLE channels(id INTEGER PRIMARY KEY,site_id TEXT);
+            CREATE TABLE seen(channel_id INTEGER,url_hash BLOB,first_seen_at TEXT);
+            CREATE TABLE reports(site_id TEXT,url TEXT,created_at TEXT);
+            CREATE TABLE reported_fingerprints(url_hash BLOB PRIMARY KEY,first_reported_at TEXT);
+            INSERT INTO sites VALUES('ap');
+            INSERT INTO channels VALUES(1,'ap');
+            INSERT INTO seen VALUES(1,X'01','2026-08-18T00:00:00+00:00');
+            INSERT INTO reports VALUES('ap','https://apnews.com/article/example','2026-08-18T00:00:00+00:00');
+        """)
+        self.assertEqual(app.remove_configured_sites(db), 1)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM sites").fetchone()[0], 0)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM channels").fetchone()[0], 0)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM seen").fetchone()[0], 0)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 0)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM reported_fingerprints").fetchone()[0], 1)
 
     def test_research_categories_allow_publication_paths(self):
         url = "https://example.com/category/reports"
