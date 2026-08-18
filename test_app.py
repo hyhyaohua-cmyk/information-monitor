@@ -10,7 +10,7 @@ import github_actions
 class MonitorTests(unittest.TestCase):
     def test_static_report_builds_without_server(self):
         sample = {
-            "refresh": {}, "sites": [], "channels": [],
+            "refresh": {}, "sites": [{"id": "example", "name": "Example", "home_url": "https://example.com", "category": "智库", "baseline_count": 1, "channel_count": 1, "error_count": 0, "last_ok_at": "2026-01-01T00:00:00+00:00"}], "channels": [],
             "reports": [{"id": 1, "run_id": "run", "site_id": "example", "url": "https://example.com/story", "title": "Story", "title_zh": "报道", "site_name": "Example", "category": "智库", "created_at": "2026-01-01T00:00:30+00:00"}],
             "runs": [{"id": "run", "category": "智库", "started_at": "2026-01-01T00:00:00+00:00", "finished_at": "2026-01-01T00:01:00+00:00", "new_count": 0, "ok_count": 1, "error_count": 0, "status": "done"}],
         }
@@ -20,6 +20,8 @@ class MonitorTests(unittest.TestCase):
             self.assertIn("信息链接监控报告", output)
             self.assertIn("前往 Actions 手动刷新", output)
             self.assertIn('<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>', output)
+            self.assertIn('id="sitePicker"', output)
+            self.assertIn('selectedSites.has(x.site_id)', output)
             (app.ROOT / "test-public" / "index.html").unlink()
             (app.ROOT / "test-public").rmdir()
 
