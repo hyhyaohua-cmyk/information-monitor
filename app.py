@@ -57,6 +57,7 @@ NEWS_SITES = [
     ("tradingview", "TradingView News", "https://www.tradingview.com/news/markets/?category=base"),
     ("fortune", "Fortune", "https://fortune.com/the-latest/"),
     ("investing", "Investing.com", "https://www.investing.com/news/latest-news"),
+    ("investinglive", "InvestingLive", "https://investinglive.com/live-feed"),
     ("aljazeera", "Al Jazeera", "https://www.aljazeera.com/news/"),
     ("nikkei", "Nikkei Asia", "https://asia.nikkei.com/Latestheadlines"),
     ("kitco", "Kitco", "https://www.kitco.com/news/digest#latest"),
@@ -65,22 +66,18 @@ NEWS_SITES = [
     ("straitstimes", "The Straits Times", "https://www.straitstimes.com/world/latest"),
     ("wired", "WIRED", "https://www.wired.com/"),
     ("techcrunch", "TechCrunch", "https://techcrunch.com/latest/"),
-    ("telegraph", "The Telegraph", "https://www.telegraph.co.uk/news/"),
     ("foreignpolicy", "Foreign Policy", "https://foreignpolicy.com/category/latest/"),
     ("politico", "POLITICO", "https://www.politico.com/politics"),
     ("nyt", "纽约时报", "https://www.nytimes.com/"),
     ("washingtonpost", "华盛顿邮报", "https://www.washingtonpost.com/latest-headlines/"),
     ("nbc", "NBC News", "https://www.nbcnews.com/"),
     ("cnn", "CNN", "https://edition.cnn.com/"),
-    ("ap", "美联社", "https://apnews.com/"),
     ("investopedia", "Investopedia", "https://www.investopedia.com/"),
     ("semafor", "Semafor", "https://www.semafor.com/"),
     ("morningstar", "Morningstar", "https://www.morningstar.com/news"),
     ("thehill", "The Hill", "https://thehill.com/"),
     ("financialpost", "Financial Post", "https://financialpost.com/category/news/"),
-    ("businesstimes", "The Business Times", "https://www.businesstimes.com.sg/breaking-news?ref=footer"),
     ("axios-markets", "Axios 财经与市场", "https://www.axios.com/economy/economy-finance-markets"),
-    ("guardian-business", "卫报商业", "https://www.theguardian.com/business/all"),
     ("scmp-business", "南华早报商业", "https://www.scmp.com/business"),
     ("sp-global", "标普全球", "https://www.spglobal.com/market-intelligence/en/news-insights"),
     ("fxstreet", "FXStreet", "https://www.fxstreet.com/news/feed"),
@@ -160,7 +157,10 @@ OBSOLETE_CHANNELS = [
     ("reuters", "sitemap", "https://www.reuters.com/sitemap/2026-07/"),
 ]
 
-REMOVED_SITE_IDS = {"bloomberg-x", "truthsocial", "cbs"}
+REMOVED_SITE_IDS = {
+    "bloomberg-x", "truthsocial", "cbs",
+    "ap", "businesstimes", "telegraph", "guardian-business",
+}
 
 TRACKING_KEYS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "mod", "ref", "source", "output"}
 SKIP_EXT = re.compile(r"\.(?:jpe?g|png|gif|webp|svg|ico|css|js|mjs|woff2?|ttf|eot|mp[34]|mov|avi|zip|gz|pdf)(?:$|\?)", re.I)
