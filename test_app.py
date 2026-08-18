@@ -22,6 +22,9 @@ class MonitorTests(unittest.TestCase):
             self.assertIn('<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>', output)
             self.assertIn('id="sitePicker"', output)
             self.assertIn('selectedSites.has(x.site_id)', output)
+            self.assertIn("siteCategories=['新闻','智库','央行']", output)
+            self.assertIn('data-category-all', output)
+            self.assertIn('syncCategorySelectors', output)
             (app.ROOT / "test-public" / "index.html").unlink()
             (app.ROOT / "test-public").rmdir()
 
@@ -30,9 +33,10 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(set(app.SITE_CATEGORIES), set(ids))
         self.assertEqual({app.SITE_CATEGORIES[site_id] for site_id in ids}, set(app.CATEGORIES))
-        self.assertEqual(len(app.NEWS_SITES), 41)
+        self.assertEqual(len(app.NEWS_SITES), 36)
         self.assertEqual(len(app.THINK_TANK_SITES), 36)
         self.assertEqual(len(app.CENTRAL_BANK_SITES), 13)
+        self.assertTrue({"scmp-business", "morningstar", "tradingeconomics", "straitstimes", "tradingview"}.issubset(app.REMOVED_SITE_IDS))
 
     def test_removed_sites_are_cleaned_without_losing_deduplication(self):
         db = sqlite3.connect(":memory:")

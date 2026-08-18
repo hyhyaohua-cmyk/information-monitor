@@ -54,7 +54,6 @@ NEWS_SITES = [
     ("biggo", "BigGo Finance", "https://finance.biggo.com/topics/Latest"),
     ("yahoo-finance", "雅虎财经", "https://finance.yahoo.com/topic/latest-news/"),
     ("zerohedge", "ZeroHedge", "https://www.zerohedge.com/"),
-    ("tradingview", "TradingView News", "https://www.tradingview.com/news/markets/?category=base"),
     ("fortune", "Fortune", "https://fortune.com/the-latest/"),
     ("investing", "Investing.com", "https://www.investing.com/news/latest-news"),
     ("investinglive", "InvestingLive", "https://investinglive.com/live-feed"),
@@ -62,8 +61,6 @@ NEWS_SITES = [
     ("nikkei", "Nikkei Asia", "https://asia.nikkei.com/Latestheadlines"),
     ("kitco", "Kitco", "https://www.kitco.com/news/digest#latest"),
     ("oilprice", "OilPrice.com", "https://oilprice.com/Latest-Energy-News/World-News/"),
-    ("tradingeconomics", "Trading Economics", "https://tradingeconomics.com/stream"),
-    ("straitstimes", "The Straits Times", "https://www.straitstimes.com/world/latest"),
     ("wired", "WIRED", "https://www.wired.com/"),
     ("techcrunch", "TechCrunch", "https://techcrunch.com/latest/"),
     ("foreignpolicy", "Foreign Policy", "https://foreignpolicy.com/category/latest/"),
@@ -74,11 +71,9 @@ NEWS_SITES = [
     ("cnn", "CNN", "https://edition.cnn.com/"),
     ("investopedia", "Investopedia", "https://www.investopedia.com/"),
     ("semafor", "Semafor", "https://www.semafor.com/"),
-    ("morningstar", "Morningstar", "https://www.morningstar.com/news"),
     ("thehill", "The Hill", "https://thehill.com/"),
     ("financialpost", "Financial Post", "https://financialpost.com/category/news/"),
     ("axios-markets", "Axios 财经与市场", "https://www.axios.com/economy/economy-finance-markets"),
-    ("scmp-business", "南华早报商业", "https://www.scmp.com/business"),
     ("sp-global", "标普全球", "https://www.spglobal.com/market-intelligence/en/news-insights"),
     ("fxstreet", "FXStreet", "https://www.fxstreet.com/news/feed"),
     ("federal-reserve", "美联储", "https://www.federalreserve.gov/newsevents/pressreleases.htm"),
@@ -160,6 +155,7 @@ OBSOLETE_CHANNELS = [
 REMOVED_SITE_IDS = {
     "bloomberg-x", "truthsocial", "cbs",
     "ap", "businesstimes", "telegraph", "guardian-business",
+    "scmp-business", "morningstar", "tradingeconomics", "straitstimes", "tradingview",
 }
 
 TRACKING_KEYS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "mod", "ref", "source", "output"}
