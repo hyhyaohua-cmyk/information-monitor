@@ -38,6 +38,13 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(app.CENTRAL_BANK_SITES), 14)
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         self.assertIn(("federal-reserve", "feed", "https://www.federalreserve.gov/feeds/press_all.xml"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("politico", "feed", "https://rss.politico.com/politics-news.xml"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("investing", "feed", "https://www.investing.com/rss/news.rss"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("adbi", "feed", "https://www.adb.org/rss/adbi"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("bank-of-england", "feed", "https://www.bankofengland.co.uk/rss/news"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("ecb", "feed", "https://www.ecb.europa.eu/rss/press.html"), app.EXPLICIT_CHANNELS)
         self.assertTrue({"scmp-business", "morningstar", "tradingeconomics", "straitstimes", "tradingview"}.issubset(app.REMOVED_SITE_IDS))
 
     def test_removed_sites_are_cleaned_without_losing_deduplication(self):
@@ -73,6 +80,14 @@ class MonitorTests(unittest.TestCase):
     def test_feed_parser(self):
         body = b'''<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Hello</title><link href="/story/1" /></entry></feed>'''
         self.assertEqual(app.parse_feed(body, "https://example.com/feed"), {"https://example.com/story/1": "Hello"})
+
+    def test_feed_parser_tolerates_prefix_before_xml_declaration(self):
+        body = b'''upstream warning\n<?xml version="1.0" encoding="UTF-8"?><rss><channel><item><title>Hello</title><link>https://example.com/story</link></item></channel></rss>'''
+        self.assertEqual(app.parse_feed(body, "https://example.com/feed"), {"https://example.com/story": "Hello"})
+
+    def test_feed_parser_tolerates_html_named_entities(self):
+        body = b'''<rss><channel><item><title>Markets &hellip; today</title><link>https://example.com/story</link></item></channel></rss>'''
+        self.assertEqual(app.parse_feed(body, "https://example.com/feed"), {"https://example.com/story": "Markets … today"})
 
     def test_feed_parser_rejects_stale_dated_items(self):
         body = b'''<rss><channel><item><title>Old</title><link>https://example.com/old</link><pubDate>Fri, 14 Aug 2020 16:12:40 +0000</pubDate></item></channel></rss>'''
@@ -199,6 +214,12 @@ class MonitorTests(unittest.TestCase):
         rows = db.execute("SELECT is_explicit FROM channels").fetchall()
         self.assertEqual(len(rows), app.MAX_SITEMAPS_PER_SITE)
         self.assertIn(1, [row[0] for row in rows])
+
+    def test_obsolete_discovered_channel_is_not_readded(self):
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE channels(id INTEGER PRIMARY KEY,site_id TEXT,kind TEXT,url TEXT,depth INTEGER,is_explicit INTEGER,UNIQUE(site_id,kind,url))")
+        self.assertFalse(app.add_channel(db, "brookings", "feed", "https://www.brookings.edu/feed"))
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM channels").fetchone()[0], 0)
 
     def test_seen_migration_replaces_urls_with_hashes(self):
         db = sqlite3.connect(":memory:")
