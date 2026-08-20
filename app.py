@@ -9,6 +9,7 @@ import email.utils
 import gzip
 import hashlib
 import html
+import html.entities
 import json
 import re
 import sqlite3
@@ -146,7 +147,27 @@ SITE_CATEGORIES = {
 
 EXPLICIT_CHANNELS = [
     ("reuters", "sitemap", "https://www.reuters.com/arc/outboundfeeds/news-sitemap-index?outputType=xml"),
+    ("investing", "feed", "https://www.investing.com/rss/news.rss"),
+    ("politico", "feed", "https://rss.politico.com/politics-news.xml"),
+    ("adbi", "feed", "https://www.adb.org/rss/adbi"),
+    ("elcano", "feed", "https://www.realinstitutoelcano.org/en/feed/"),
+    ("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"),
+    ("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"),
     ("federal-reserve", "feed", "https://www.federalreserve.gov/feeds/press_all.xml"),
+    ("new-york-fed", "homepage", "https://www.newyorkfed.org/press"),
+    ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/listindex"),
+    ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/pressindex"),
+    ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/pubs"),
+    ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/speechindex"),
+    ("dallas-fed", "feed", "https://www.dallasfed.org/rss/dallasfed.xml"),
+    ("dallas-fed", "feed", "https://www.dallasfed.org/rss/releases.xml"),
+    ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page%20resources/publications/blog-entries"),
+    ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page%20resources/publications/open-vault-blog"),
+    ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page-resources/publications/page-one-economics"),
+    ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page-resources/publications/review"),
+    ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page%20resources/podcasts/timely-topics"),
+    ("bank-of-england", "feed", "https://www.bankofengland.co.uk/rss/news"),
+    ("ecb", "feed", "https://www.ecb.europa.eu/rss/press.html"),
 ]
 
 TARGETED_BACKFILLS = (
@@ -162,6 +183,15 @@ TARGETED_BACKFILLS = (
 
 OBSOLETE_CHANNELS = [
     ("reuters", "sitemap", "https://www.reuters.com/sitemap/2026-07/"),
+    ("brookings", "feed", "https://www.brookings.edu/comments/feed"),
+    ("brookings", "feed", "https://www.brookings.edu/feed"),
+    ("fxstreet", "sitemap", "https://www.fxstreet.com/sitemap-all.xml"),
+    ("foreignpolicy", "sitemap", "https://foreignpolicy.com/sitemap-100.xml"),
+    ("foreignpolicy", "sitemap", "https://foreignpolicy.com/sitemap-101.xml"),
+    ("foreignpolicy", "sitemap", "https://foreignpolicy.com/sitemap-102.xml"),
+    ("cfr", "sitemap", "https://cfr.org/education/sitemap.xml"),
+    ("atlantic-council", "sitemap", "https://n7initiative.org/sitemap_index.xml"),
+    ("fabian-society", "sitemap", "https://fabians.org.uk/sitemap.rss"),
 ]
 
 REMOVED_SITE_IDS = {
@@ -175,6 +205,8 @@ SKIP_EXT = re.compile(r"\.(?:jpe?g|png|gif|webp|svg|ico|css|js|mjs|woff2?|ttf|eo
 SKIP_PATH = re.compile(r"/(?:login|signin|signup|subscribe|account|privacy|terms|cookies?|contact|about|author|authors|tag|tags|topic|topics|category|search)(?:/|$)", re.I)
 BASIC_SKIP_PATH = re.compile(r"/(?:login|signin|signup|subscribe|account|privacy|terms|cookies?|contact|about|author|authors|search)(?:/|$)", re.I)
 FEED_TYPES = {"application/rss+xml", "application/atom+xml", "application/feed+json", "application/xml", "text/xml"}
+XML_ENTITY_RE = re.compile(r"&([A-Za-z][A-Za-z0-9]+);")
+XML_CORE_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 
 
 def utcnow() -> str:
@@ -486,8 +518,25 @@ def localname(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
+def parse_public_xml(body: bytes) -> ET.Element:
+    """Parse public XML while tolerating common publisher feed defects."""
+    text = decode(body).lstrip("\ufeff \t\r\n")
+    declaration = text.find("<?xml")
+    if declaration > 0:
+        text = text[declaration:]
+
+    def replace_entity(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name in XML_CORE_ENTITIES:
+            return match.group(0)
+        replacement = html.entities.html5.get(name + ";") or html.entities.html5.get(name)
+        return replacement if replacement is not None else f"&amp;{name};"
+
+    return ET.fromstring(XML_ENTITY_RE.sub(replace_entity, text))
+
+
 def parse_feed_details(body: bytes, base: str, now: dt.datetime | None = None) -> tuple[dict[str, str], dict[str, str]]:
-    root = ET.fromstring(body)
+    root = parse_public_xml(body)
     items: dict[str, str] = {}
     published_dates: dict[str, str] = {}
     for node in root.iter():
@@ -538,7 +587,7 @@ def candidate_is_current(url: str, published_at: str = "", now: dt.datetime | No
 def parse_sitemap(body: bytes, base: str) -> tuple[dict[str, str], set[str]]:
     if body[:2] == b"\x1f\x8b":
         body = gzip.decompress(body)
-    root = ET.fromstring(body)
+    root = parse_public_xml(body)
     kind = localname(root.tag)
     pages: dict[str, str] = {}
     children: set[str] = set()
@@ -838,6 +887,11 @@ def add_channel(db: sqlite3.Connection, site_id: str, kind: str, url: str, depth
     value = canonical_url(url)
     if not value:
         return False
+    if any(
+        site_id == old_site and kind == old_kind and value == canonical_url(old_url)
+        for old_site, old_kind, old_url in OBSOLETE_CHANNELS
+    ):
+        return False
     if kind == "sitemap" and not explicit:
         if depth > MAX_SITEMAP_DEPTH:
             return False
@@ -865,7 +919,8 @@ def discover_for_site(site: sqlite3.Row) -> None:
         for url in feeds:
             add_channel(db, site["id"], "feed", url)
         for url in maps:
-            add_channel(db, site["id"], "sitemap", url)
+            if same_site(url, home):
+                add_channel(db, site["id"], "sitemap", url)
 
 
 def collect_channel(row: sqlite3.Row, home_url: str) -> tuple[int, bool, dict[str, str], set[str], dict[str, str], str]:
