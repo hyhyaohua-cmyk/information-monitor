@@ -33,9 +33,11 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(set(app.SITE_CATEGORIES), set(ids))
         self.assertEqual({app.SITE_CATEGORIES[site_id] for site_id in ids}, set(app.CATEGORIES))
-        self.assertEqual(len(app.NEWS_SITES), 36)
+        self.assertEqual(len(app.NEWS_SITES), 35)
         self.assertEqual(len(app.THINK_TANK_SITES), 36)
-        self.assertEqual(len(app.CENTRAL_BANK_SITES), 13)
+        self.assertEqual(len(app.CENTRAL_BANK_SITES), 14)
+        self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
+        self.assertIn(("federal-reserve", "feed", "https://www.federalreserve.gov/feeds/press_all.xml"), app.EXPLICIT_CHANNELS)
         self.assertTrue({"scmp-business", "morningstar", "tradingeconomics", "straitstimes", "tradingview"}.issubset(app.REMOVED_SITE_IDS))
 
     def test_removed_sites_are_cleaned_without_losing_deduplication(self):
@@ -76,6 +78,16 @@ class MonitorTests(unittest.TestCase):
         body = b'''<rss><channel><item><title>Old</title><link>https://example.com/old</link><pubDate>Fri, 14 Aug 2020 16:12:40 +0000</pubDate></item></channel></rss>'''
         now = dt.datetime(2026, 8, 16, 12, 0, tzinfo=dt.timezone.utc)
         self.assertEqual(app.parse_feed(body, "https://example.com/feed", now), {})
+
+    def test_verified_feed_publication_overrides_previous_date_in_url(self):
+        url = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260819a.htm"
+        body = f'''<rss><channel><item><title>FOMC minutes</title><link>{url}</link><pubDate>Wed, 19 Aug 2026 18:00:00 GMT</pubDate></item></channel></rss>'''.encode()
+        now = dt.datetime(2026, 8, 20, 5, 32, 24, tzinfo=dt.timezone.utc)
+        items, published_dates = app.parse_feed_details(body, "https://www.federalreserve.gov/feeds/press_all.xml", now)
+        self.assertEqual(items[url], "FOMC minutes")
+        self.assertEqual(published_dates[url], "2026-08-19T18:00:00+00:00")
+        self.assertFalse(app.candidate_is_current(url, now=now))
+        self.assertTrue(app.candidate_is_current(url, published_dates[url], now))
 
     def test_publication_window_covers_both_timezones(self):
         now = dt.datetime(2026, 8, 16, 3, 0, tzinfo=dt.timezone.utc)
@@ -215,6 +227,34 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 1)
         self.assertEqual(db.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 1)
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reported_fingerprints").fetchone()[0], 1)
+
+    def test_targeted_backfill_is_inserted_once(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+          CREATE TABLE runs(id TEXT PRIMARY KEY,started_at TEXT,finished_at TEXT,status TEXT,new_count INTEGER,ok_count INTEGER,error_count INTEGER,category TEXT);
+          CREATE TABLE reports(run_id TEXT,site_id TEXT,url TEXT UNIQUE,title TEXT,published_at TEXT,channels TEXT,created_at TEXT);
+          CREATE TABLE reported_fingerprints(url_hash BLOB PRIMARY KEY,first_reported_at TEXT);
+        """)
+        self.assertEqual(app.apply_targeted_backfills(db), 1)
+        self.assertEqual(app.apply_targeted_backfills(db), 0)
+        report = db.execute("SELECT site_id,url,published_at FROM reports").fetchone()
+        self.assertEqual(report["site_id"], "federal-reserve")
+        self.assertEqual(report["url"], app.TARGETED_BACKFILLS[0]["url"])
+        self.assertEqual(report["published_at"], "2026-08-19T18:00:00+00:00")
+        self.assertEqual(db.execute("SELECT new_count FROM runs").fetchone()[0], 1)
+
+    def test_recent_verified_report_survives_historical_url_cleanup(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+          CREATE TABLE reports(id INTEGER PRIMARY KEY,url TEXT,created_at TEXT,published_at TEXT);
+          CREATE TABLE reported_fingerprints(url_hash BLOB PRIMARY KEY,first_reported_at TEXT);
+        """)
+        now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        db.execute("INSERT INTO reports(url,created_at,published_at) VALUES(?,?,?)", ("https://example.com/story-20200101", now, now))
+        self.assertEqual(app.remove_historical_dated_reports(db), 0)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 1)
 
 
 if __name__ == "__main__":

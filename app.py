@@ -76,7 +76,6 @@ NEWS_SITES = [
     ("axios-markets", "Axios 财经与市场", "https://www.axios.com/economy/economy-finance-markets"),
     ("sp-global", "标普全球", "https://www.spglobal.com/market-intelligence/en/news-insights"),
     ("fxstreet", "FXStreet", "https://www.fxstreet.com/news/feed"),
-    ("federal-reserve", "美联储", "https://www.federalreserve.gov/newsevents/pressreleases.htm"),
     ("sec", "美国证交会", "https://www.sec.gov/newsroom/press-releases"),
     ("eia", "美国能源信息署", "https://www.eia.gov/todayinenergy/"),
 ]
@@ -121,6 +120,7 @@ THINK_TANK_SITES = [
 ]
 
 CENTRAL_BANK_SITES = [
+    ("federal-reserve", "美联储", "https://www.federalreserve.gov/newsevents/pressreleases.htm"),
     ("new-york-fed", "纽约联储", "https://www.newyorkfed.org/"),
     ("boston-fed", "波士顿联储", "https://www.bostonfed.org/"),
     ("san-francisco-fed", "旧金山联储", "https://www.frbsf.org/"),
@@ -146,7 +146,19 @@ SITE_CATEGORIES = {
 
 EXPLICIT_CHANNELS = [
     ("reuters", "sitemap", "https://www.reuters.com/arc/outboundfeeds/news-sitemap-index?outputType=xml"),
+    ("federal-reserve", "feed", "https://www.federalreserve.gov/feeds/press_all.xml"),
 ]
+
+TARGETED_BACKFILLS = (
+    {
+        "run_id": "backfill-fomc-minutes-20260819",
+        "site_id": "federal-reserve",
+        "category": "央行",
+        "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260819a.htm",
+        "title": "Minutes of the Federal Open Market Committee, July 28–29, 2026",
+        "published_at": "2026-08-19T18:00:00+00:00",
+    },
+)
 
 OBSOLETE_CHANNELS = [
     ("reuters", "sitemap", "https://www.reuters.com/sitemap/2026-07/"),
@@ -474,9 +486,10 @@ def localname(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
-def parse_feed(body: bytes, base: str, now: dt.datetime | None = None) -> dict[str, str]:
+def parse_feed_details(body: bytes, base: str, now: dt.datetime | None = None) -> tuple[dict[str, str], dict[str, str]]:
     root = ET.fromstring(body)
     items: dict[str, str] = {}
+    published_dates: dict[str, str] = {}
     for node in root.iter():
         if localname(node.tag) not in {"item", "entry"}:
             continue
@@ -502,7 +515,24 @@ def parse_feed(body: bytes, base: str, now: dt.datetime | None = None) -> dict[s
             continue
         if link:
             items[link] = title
-    return dict(list(items.items())[:MAX_ITEMS_PER_CHANNEL])
+            if published is not None:
+                published_dates[link] = published.isoformat(timespec="seconds")
+    items = dict(list(items.items())[:MAX_ITEMS_PER_CHANNEL])
+    return items, {url: published_dates[url] for url in items if url in published_dates}
+
+
+def parse_feed(body: bytes, base: str, now: dt.datetime | None = None) -> dict[str, str]:
+    return parse_feed_details(body, base, now)[0]
+
+
+def candidate_is_current(url: str, published_at: str = "", now: dt.datetime | None = None) -> bool:
+    if is_ignored_content_url(url):
+        return False
+    if published_at:
+        published = parse_publication_time(published_at)
+        if published is not None and publication_is_current(published, now):
+            return True
+    return not url_has_non_current_date(url, current_news_dates(now))
 
 
 def parse_sitemap(body: bytes, base: str) -> tuple[dict[str, str], set[str]]:
@@ -600,7 +630,7 @@ def init_db() -> None:
           id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, site_id TEXT NOT NULL, url TEXT NOT NULL,
           title TEXT NOT NULL DEFAULT '', title_zh TEXT NOT NULL DEFAULT '', enrich_error TEXT,
           enrich_attempts INTEGER NOT NULL DEFAULT 0, enriched_at TEXT, language TEXT NOT NULL DEFAULT '',
-          channels TEXT NOT NULL, created_at TEXT NOT NULL,
+          published_at TEXT, channels TEXT NOT NULL, created_at TEXT NOT NULL,
           UNIQUE(url), FOREIGN KEY(run_id) REFERENCES runs(id));
         CREATE TABLE IF NOT EXISTS reported_fingerprints(
           url_hash BLOB PRIMARY KEY, first_reported_at TEXT NOT NULL);
@@ -627,6 +657,8 @@ def init_db() -> None:
             db.execute("ALTER TABLE reports ADD COLUMN enriched_at TEXT")
         if "language" not in report_columns:
             db.execute("ALTER TABLE reports ADD COLUMN language TEXT NOT NULL DEFAULT ''")
+        if "published_at" not in report_columns:
+            db.execute("ALTER TABLE reports ADD COLUMN published_at TEXT")
         migrate_seen_to_fingerprints(db)
         db.executemany(
             "INSERT OR IGNORE INTO reported_fingerprints(url_hash,first_reported_at) VALUES(?,?)",
@@ -638,6 +670,7 @@ def init_db() -> None:
         db.execute("UPDATE channels SET is_explicit=1 WHERE kind='homepage'")
         db.executemany("INSERT OR IGNORE INTO channels(site_id,kind,url,is_explicit) VALUES(?,?,?,1)", [(s, k, canonical_url(u)) for s, k, u in EXPLICIT_CHANNELS])
         db.executemany("UPDATE channels SET is_explicit=1 WHERE site_id=? AND kind=? AND url=?", [(s, k, canonical_url(u)) for s, k, u in EXPLICIT_CHANNELS])
+        apply_targeted_backfills(db)
         for site_id, kind, url in OBSOLETE_CHANNELS:
             obsolete_url = canonical_url(url)
             db.execute("DELETE FROM seen WHERE channel_id IN (SELECT id FROM channels WHERE site_id=? AND kind=? AND url=?)", (site_id, kind, obsolete_url))
@@ -699,8 +732,42 @@ def remove_configured_sites(db: sqlite3.Connection) -> int:
     return removed
 
 
+def apply_targeted_backfills(db: sqlite3.Connection) -> int:
+    inserted = 0
+    for item in TARGETED_BACKFILLS:
+        fingerprint = url_fingerprint(item["url"])
+        if db.execute("SELECT 1 FROM reported_fingerprints WHERE url_hash=?", (fingerprint,)).fetchone():
+            continue
+        now = utcnow()
+        db.execute(
+            "INSERT OR IGNORE INTO runs(id,started_at,finished_at,status,new_count,ok_count,error_count,category) VALUES(?,?,?,'done',0,1,0,?)",
+            (item["run_id"], now, now, item["category"]),
+        )
+        marker = db.execute(
+            "INSERT OR IGNORE INTO reported_fingerprints(url_hash,first_reported_at) VALUES(?,?)",
+            (fingerprint, now),
+        )
+        if not marker.rowcount:
+            continue
+        report = db.execute(
+            "INSERT OR IGNORE INTO reports(run_id,site_id,url,title,published_at,channels,created_at) VALUES(?,?,?,?,?,?,?)",
+            (item["run_id"], item["site_id"], item["url"], item["title"], item["published_at"], '["feed"]', now),
+        )
+        inserted += report.rowcount
+        db.execute("UPDATE runs SET new_count=? WHERE id=?", (report.rowcount, item["run_id"]))
+    return inserted
+
+
 def remove_historical_dated_reports(db: sqlite3.Connection) -> int:
-    rows = [row for row in db.execute("SELECT id,url,created_at FROM reports") if url_has_non_current_date(row["url"])]
+    recent_publication_cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=RETENTION_DAYS)
+    rows = []
+    for row in db.execute("SELECT id,url,created_at,published_at FROM reports"):
+        if not url_has_non_current_date(row["url"]):
+            continue
+        published = parse_publication_time(row["published_at"] or "")
+        if published is not None and published >= recent_publication_cutoff:
+            continue
+        rows.append(row)
     db.executemany(
         "INSERT OR IGNORE INTO reported_fingerprints(url_hash,first_reported_at) VALUES(?,?)",
         [(url_fingerprint(row["url"]), row["created_at"]) for row in rows],
@@ -801,21 +868,22 @@ def discover_for_site(site: sqlite3.Row) -> None:
             add_channel(db, site["id"], "sitemap", url)
 
 
-def collect_channel(row: sqlite3.Row, home_url: str) -> tuple[int, bool, dict[str, str], set[str], str]:
+def collect_channel(row: sqlite3.Row, home_url: str) -> tuple[int, bool, dict[str, str], set[str], dict[str, str], str]:
     result = fetch(row["url"])
     if not result.ok:
-        return row["id"], False, {}, set(), result.error
+        return row["id"], False, {}, set(), {}, result.error
     try:
         if row["kind"] == "homepage":
             parser = PageParser(result.final_url, home_url, row["category"])
             parser.feed(decode(result.body))
-            return row["id"], True, parser.links, set(), ""
+            return row["id"], True, parser.links, set(), {}, ""
         if row["kind"] == "feed":
-            return row["id"], True, parse_feed(result.body, result.final_url), set(), ""
+            items, published_dates = parse_feed_details(result.body, result.final_url)
+            return row["id"], True, items, set(), published_dates, ""
         pages, children = parse_sitemap(result.body, result.final_url)
-        return row["id"], True, pages, children, ""
+        return row["id"], True, pages, children, {}, ""
     except Exception as exc:
-        return row["id"], False, {}, set(), f"解析失败: {type(exc).__name__}: {exc}"[:500]
+        return row["id"], False, {}, set(), {}, f"解析失败: {type(exc).__name__}: {exc}"[:500]
 
 
 refresh_lock = threading.Lock()
@@ -950,7 +1018,7 @@ def run_refresh(run_id: str, category: str) -> None:
                     refresh_state.update(completed=done, total=total, percent=max(refresh_state["percent"], percent))
             by_id = {r["id"]: r for r in batch}
             with connect() as db:
-                for channel_id, ok, items, children, error in results:
+                for channel_id, ok, items, children, published_dates, error in results:
                     row = by_id[channel_id]
                     processed.add(channel_id)
                     if not ok:
@@ -966,15 +1034,17 @@ def run_refresh(run_id: str, category: str) -> None:
                     db.execute("UPDATE channels SET baseline_at=COALESCE(baseline_at,?),last_ok_at=?,last_error=NULL,last_count=? WHERE id=?", (now, now, len(items), channel_id))
                     if not is_baseline:
                         for url, title in new_items:
-                            entry = candidates.setdefault(url, {"site_id": row["site_id"], "title": title, "channels": set()})
+                            entry = candidates.setdefault(url, {"site_id": row["site_id"], "title": title, "channels": set(), "published_at": ""})
                             if title and not entry["title"]:
                                 entry["title"] = title
+                            if published_dates.get(url):
+                                entry["published_at"] = published_dates[url]
                             entry["channels"].add(row["kind"])
                     ranked_children = sorted(children, key=lambda url: (-sitemap_score(url), url))
                     for child in ranked_children[:MAX_SITEMAP_CHILDREN]:
                         add_channel(db, row["site_id"], "sitemap", child, depth=row["depth"] + 1)
                 prune_sitemaps(db)
-                if any(children for _, _, _, children, _ in results):
+                if any(children for _, _, _, children, _, _ in results):
                     pending = db.execute("SELECT c.*,s.home_url,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE c.kind='sitemap' AND s.category=?", (category,)).fetchall()
 
         inserted = 0
@@ -982,11 +1052,11 @@ def run_refresh(run_id: str, category: str) -> None:
         with connect() as db:
             now = utcnow()
             for url, data in candidates.items():
-                if url_has_non_current_date(url) or is_ignored_content_url(url):
+                if not candidate_is_current(url, data["published_at"]):
                     continue
                 marker = db.execute("INSERT OR IGNORE INTO reported_fingerprints(url_hash,first_reported_at) VALUES(?,?)", (url_fingerprint(url), now))
                 if marker.rowcount:
-                    cur = db.execute("INSERT OR IGNORE INTO reports(run_id,site_id,url,title,channels,created_at) VALUES(?,?,?,?,?,?)", (run_id, data["site_id"], url, data["title"], json.dumps(sorted(data["channels"]), ensure_ascii=False), now))
+                    cur = db.execute("INSERT OR IGNORE INTO reports(run_id,site_id,url,title,published_at,channels,created_at) VALUES(?,?,?,?,?,?,?)", (run_id, data["site_id"], url, data["title"], data["published_at"] or None, json.dumps(sorted(data["channels"]), ensure_ascii=False), now))
                     inserted += cur.rowcount
             db.execute("UPDATE runs SET finished_at=?,status='done',new_count=?,ok_count=?,error_count=? WHERE id=?", (utcnow(), inserted, ok_count, error_count, run_id))
             cleanup_history(db)
