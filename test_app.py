@@ -35,9 +35,28 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual({app.SITE_CATEGORIES[site_id] for site_id in ids}, set(app.CATEGORIES))
         self.assertEqual(len(app.NEWS_SITES), 35)
         self.assertEqual(len(app.THINK_TANK_SITES), 36)
-        self.assertEqual(len(app.CENTRAL_BANK_SITES), 14)
+        self.assertEqual(len(app.CENTRAL_BANK_SITES), 15)
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
+        expected_reserve_banks = {
+            "boston-fed", "new-york-fed", "philadelphia-fed", "cleveland-fed",
+            "richmond-fed", "atlanta-fed", "chicago-fed", "st-louis-fed",
+            "minneapolis-fed", "kansas-city-fed", "dallas-fed", "san-francisco-fed",
+        }
+        self.assertEqual(app.FEDERAL_RESERVE_BANK_IDS, expected_reserve_banks)
+        self.assertTrue(expected_reserve_banks.issubset({site_id for site_id, _, _ in app.CENTRAL_BANK_SITES}))
+        self.assertEqual(app.SITE_CATEGORIES["chicago-fed"], "央行")
         self.assertIn(("federal-reserve", "feed", "https://www.federalreserve.gov/feeds/press_all.xml"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("federal-reserve", "homepage", "https://www.federalreserve.gov/newsevents.htm"), app.EXPLICIT_CHANNELS)
+        self.assertIn(("federal-reserve", "homepage", "https://www.federalreserve.gov/publications.htm"), app.EXPLICIT_CHANNELS)
+        self.assertEqual(
+            {url for site_id, kind, url in app.EXPLICIT_CHANNELS if site_id == "federal-reserve" and kind == "feed"},
+            set(app.FEDERAL_RESERVE_BOARD_FEEDS),
+        )
+        self.assertIn(("chicago-fed", "homepage", "https://www.chicagofed.org/publications/publication-listing"), app.EXPLICIT_CHANNELS)
+        self.assertEqual(
+            {url for site_id, kind, url in app.EXPLICIT_CHANNELS if site_id == "chicago-fed" and kind == "feed"},
+            set(app.CHICAGO_FED_FEEDS),
+        )
         self.assertIn(("politico", "feed", "https://rss.politico.com/politics-news.xml"), app.EXPLICIT_CHANNELS)
         self.assertIn(("investing", "feed", "https://www.investing.com/rss/news.rss"), app.EXPLICIT_CHANNELS)
         self.assertIn(("adbi", "feed", "https://www.adb.org/rss/adbi"), app.EXPLICIT_CHANNELS)
@@ -257,13 +276,15 @@ class MonitorTests(unittest.TestCase):
           CREATE TABLE reports(run_id TEXT,site_id TEXT,url TEXT UNIQUE,title TEXT,published_at TEXT,channels TEXT,created_at TEXT);
           CREATE TABLE reported_fingerprints(url_hash BLOB PRIMARY KEY,first_reported_at TEXT);
         """)
-        self.assertEqual(app.apply_targeted_backfills(db), 1)
+        self.assertEqual(app.apply_targeted_backfills(db), len(app.TARGETED_BACKFILLS))
         self.assertEqual(app.apply_targeted_backfills(db), 0)
-        report = db.execute("SELECT site_id,url,published_at FROM reports").fetchone()
-        self.assertEqual(report["site_id"], "federal-reserve")
-        self.assertEqual(report["url"], app.TARGETED_BACKFILLS[0]["url"])
-        self.assertEqual(report["published_at"], "2026-08-19T18:00:00+00:00")
-        self.assertEqual(db.execute("SELECT new_count FROM runs").fetchone()[0], 1)
+        reports = {row["url"]: row for row in db.execute("SELECT site_id,url,published_at FROM reports")}
+        self.assertEqual(set(reports), {item["url"] for item in app.TARGETED_BACKFILLS})
+        self.assertEqual(reports[app.TARGETED_BACKFILLS[0]["url"]]["site_id"], "federal-reserve")
+        chicago = reports["https://www.chicagofed.org/publications/chicago-fed-letter/2026/526"]
+        self.assertEqual(chicago["site_id"], "chicago-fed")
+        self.assertEqual(chicago["published_at"], "2026-08-20T00:00:00-05:00")
+        self.assertEqual(db.execute("SELECT SUM(new_count) FROM runs").fetchone()[0], len(app.TARGETED_BACKFILLS))
 
     def test_recent_verified_report_survives_historical_url_cleanup(self):
         db = sqlite3.connect(":memory:")
