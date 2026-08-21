@@ -134,8 +134,10 @@ CENTRAL_BANK_SITES = [
     ("st-louis-fed", "圣路易斯联储", "https://www.stlouisfed.org/"),
     ("kansas-city-fed", "堪萨斯城联储", "https://www.kansascityfed.org/"),
     ("minneapolis-fed", "明尼阿波利斯联储", "https://www.minneapolisfed.org/"),
-    ("bank-of-england", "英格兰银行", "https://www.bankofengland.co.uk/news/publications"),
+    ("bank-of-england", "英国央行", "https://www.bankofengland.co.uk/"),
     ("ecb", "欧洲中央银行", "https://www.ecb.europa.eu/home/html/index.en.html"),
+    ("bank-of-japan", "日本央行", "https://www.boj.or.jp/en/whatsnew/"),
+    ("reserve-bank-australia", "澳洲联储", "https://www.rba.gov.au/"),
 ]
 
 FEDERAL_RESERVE_BANK_IDS = frozenset({
@@ -177,6 +179,55 @@ CHICAGO_FED_FEEDS = (
     "https://www.chicagofed.org/forms/rss/insights",
 )
 
+GLOBAL_CENTRAL_BANK_IDS = frozenset({
+    "bank-of-england",
+    "ecb",
+    "bank-of-japan",
+    "reserve-bank-australia",
+})
+
+BANK_OF_ENGLAND_FEEDS = (
+    "https://www.bankofengland.co.uk/rss/bank-insights",
+    "https://www.bankofengland.co.uk/rss/events",
+    "https://www.bankofengland.co.uk/rss/knowledgebank",
+    "https://www.bankofengland.co.uk/rss/news",
+    "https://www.bankofengland.co.uk/rss/prudential-regulation-publications",
+    "https://www.bankofengland.co.uk/rss/publications",
+    "https://www.bankofengland.co.uk/rss/speeches",
+    "https://www.bankofengland.co.uk/rss/statistics",
+)
+
+ECB_FEEDS = (
+    "https://www.ecb.europa.eu/rss/press.html",
+    "https://www.ecb.europa.eu/rss/blog.html",
+    "https://www.ecb.europa.eu/rss/statpress.html",
+    "https://www.ecb.europa.eu/rss/pub.html",
+    "https://www.ecb.europa.eu/rss/wppub.html",
+    "https://www.ecb.europa.eu/rss/operations.html",
+    "https://www.ecb.europa.eu/rss/procurements.html",
+    "https://www.ecb.europa.eu/rss/yc.html",
+    "https://www.ecb.europa.eu/rss/rbu.html",
+    "https://www.ecb.europa.eu/rss/tipsmeetdocs.rss",
+)
+
+BANK_OF_JAPAN_FEEDS = (
+    "https://www.boj.or.jp/en/rss/whatsnew.xml",
+    "https://www.boj.or.jp/en/rss/statistics.xml",
+)
+
+RESERVE_BANK_AUSTRALIA_FEEDS = (
+    "https://www.rba.gov.au/rss/rss-cb-exchange-rates.xml",
+    "https://www.rba.gov.au/rss/rss-cb-media-releases.xml",
+    "https://www.rba.gov.au/rss/rss-cb-speeches.xml",
+    "https://www.rba.gov.au/rss/rss-cb-speeches-webcast.xml",
+    "https://www.rba.gov.au/rss/rss-cb-bulletin.xml",
+    "https://www.rba.gov.au/rss/rss-cb-fsr.xml",
+    "https://www.rba.gov.au/rss/rss-cb-smp.xml",
+    "https://www.rba.gov.au/rss/rss-cb-rdp.xml",
+    "https://www.rba.gov.au/rss/rss-cb-foi.xml",
+    "https://www.rba.gov.au/rss/rss-cb-changes-to-tables.xml",
+)
+
 CATEGORIES = ("新闻", "智库", "央行")
 SITES = NEWS_SITES + THINK_TANK_SITES + CENTRAL_BANK_SITES
 SITE_CATEGORIES = {
@@ -210,8 +261,17 @@ EXPLICIT_CHANNELS = [
     ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page-resources/publications/page-one-economics"),
     ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page-resources/publications/review"),
     ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page%20resources/podcasts/timely-topics"),
-    ("bank-of-england", "feed", "https://www.bankofengland.co.uk/rss/news"),
-    ("ecb", "feed", "https://www.ecb.europa.eu/rss/press.html"),
+    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news"),
+    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/publications"),
+    *(("bank-of-england", "feed", url) for url in BANK_OF_ENGLAND_FEEDS),
+    ("ecb", "homepage", "https://www.ecb.europa.eu/press/html/index.en.html"),
+    ("ecb", "homepage", "https://www.ecb.europa.eu/pub/html/index.en.html"),
+    *(("ecb", "feed", url) for url in ECB_FEEDS),
+    ("bank-of-japan", "homepage", "https://www.boj.or.jp/en/about/calendar/"),
+    *(("bank-of-japan", "feed", url) for url in BANK_OF_JAPAN_FEEDS),
+    ("reserve-bank-australia", "homepage", "https://www.rba.gov.au/media-releases/"),
+    ("reserve-bank-australia", "homepage", "https://www.rba.gov.au/publications/"),
+    *(("reserve-bank-australia", "feed", url) for url in RESERVE_BANK_AUSTRALIA_FEEDS),
 ]
 
 TARGETED_BACKFILLS = (
@@ -235,6 +295,7 @@ TARGETED_BACKFILLS = (
 
 OBSOLETE_CHANNELS = [
     ("reuters", "sitemap", "https://www.reuters.com/sitemap/2026-07/"),
+    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news/publications"),
     ("brookings", "feed", "https://www.brookings.edu/comments/feed"),
     ("brookings", "feed", "https://www.brookings.edu/feed"),
     ("fxstreet", "sitemap", "https://www.fxstreet.com/sitemap-all.xml"),

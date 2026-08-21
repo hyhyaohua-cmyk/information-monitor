@@ -35,7 +35,7 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual({app.SITE_CATEGORIES[site_id] for site_id in ids}, set(app.CATEGORIES))
         self.assertEqual(len(app.NEWS_SITES), 35)
         self.assertEqual(len(app.THINK_TANK_SITES), 36)
-        self.assertEqual(len(app.CENTRAL_BANK_SITES), 15)
+        self.assertEqual(len(app.CENTRAL_BANK_SITES), 17)
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         expected_reserve_banks = {
             "boston-fed", "new-york-fed", "philadelphia-fed", "cleveland-fed",
@@ -62,8 +62,24 @@ class MonitorTests(unittest.TestCase):
         self.assertIn(("adbi", "feed", "https://www.adb.org/rss/adbi"), app.EXPLICIT_CHANNELS)
         self.assertIn(("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"), app.EXPLICIT_CHANNELS)
         self.assertIn(("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"), app.EXPLICIT_CHANNELS)
-        self.assertIn(("bank-of-england", "feed", "https://www.bankofengland.co.uk/rss/news"), app.EXPLICIT_CHANNELS)
-        self.assertIn(("ecb", "feed", "https://www.ecb.europa.eu/rss/press.html"), app.EXPLICIT_CHANNELS)
+        expected_global_central_banks = {
+            "bank-of-england", "ecb", "bank-of-japan", "reserve-bank-australia",
+        }
+        self.assertEqual(app.GLOBAL_CENTRAL_BANK_IDS, expected_global_central_banks)
+        self.assertTrue(expected_global_central_banks.issubset({site_id for site_id, _, _ in app.CENTRAL_BANK_SITES}))
+        self.assertTrue(all(app.SITE_CATEGORIES[site_id] == "央行" for site_id in expected_global_central_banks))
+        expected_feed_sets = {
+            "bank-of-england": set(app.BANK_OF_ENGLAND_FEEDS),
+            "ecb": set(app.ECB_FEEDS),
+            "bank-of-japan": set(app.BANK_OF_JAPAN_FEEDS),
+            "reserve-bank-australia": set(app.RESERVE_BANK_AUSTRALIA_FEEDS),
+        }
+        for site_id, expected_feeds in expected_feed_sets.items():
+            configured_feeds = {
+                url for channel_site_id, kind, url in app.EXPLICIT_CHANNELS
+                if channel_site_id == site_id and kind == "feed"
+            }
+            self.assertEqual(configured_feeds, expected_feeds)
         self.assertTrue({"scmp-business", "morningstar", "tradingeconomics", "straitstimes", "tradingview"}.issubset(app.REMOVED_SITE_IDS))
 
     def test_removed_sites_are_cleaned_without_losing_deduplication(self):
