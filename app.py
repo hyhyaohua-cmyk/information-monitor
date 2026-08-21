@@ -121,9 +121,10 @@ THINK_TANK_SITES = [
 ]
 
 CENTRAL_BANK_SITES = [
-    ("federal-reserve", "美联储", "https://www.federalreserve.gov/newsevents/pressreleases.htm"),
+    ("federal-reserve", "美联储", "https://www.federalreserve.gov/"),
     ("new-york-fed", "纽约联储", "https://www.newyorkfed.org/"),
     ("boston-fed", "波士顿联储", "https://www.bostonfed.org/"),
+    ("chicago-fed", "芝加哥联储", "https://www.chicagofed.org/"),
     ("san-francisco-fed", "旧金山联储", "https://www.frbsf.org/"),
     ("philadelphia-fed", "费城联储", "https://www.philadelphiafed.org/"),
     ("richmond-fed", "里士满联储", "https://www.richmondfed.org/"),
@@ -136,6 +137,45 @@ CENTRAL_BANK_SITES = [
     ("bank-of-england", "英格兰银行", "https://www.bankofengland.co.uk/news/publications"),
     ("ecb", "欧洲中央银行", "https://www.ecb.europa.eu/home/html/index.en.html"),
 ]
+
+FEDERAL_RESERVE_BANK_IDS = frozenset({
+    "boston-fed",
+    "new-york-fed",
+    "philadelphia-fed",
+    "cleveland-fed",
+    "richmond-fed",
+    "atlanta-fed",
+    "chicago-fed",
+    "st-louis-fed",
+    "minneapolis-fed",
+    "kansas-city-fed",
+    "dallas-fed",
+    "san-francisco-fed",
+})
+
+FEDERAL_RESERVE_BOARD_FEEDS = (
+    "https://www.federalreserve.gov/feeds/press_all.xml",
+    "https://www.federalreserve.gov/feeds/speeches_and_testimony.xml",
+    "https://www.federalreserve.gov/feeds/clp.xml",
+    "https://www.federalreserve.gov/feeds/currentfaqs.xml",
+    "https://www.federalreserve.gov/feeds/regreform.xml",
+    "https://www.federalreserve.gov/feeds/boardmeetings.xml",
+    "https://www.federalreserve.gov/feeds/reportforms-rss.xml",
+    "https://www.federalreserve.gov/feeds/bankinginfo-rss.xml",
+    "https://www.federalreserve.gov/feeds/covid-19.xml",
+    "https://www.federalreserve.gov/feeds/working_papers.xml",
+    "https://www.federalreserve.gov/feeds/datadownload.xml",
+)
+
+CHICAGO_FED_FEEDS = (
+    "https://www.chicagofed.org/forms/rss/DataReleases",
+    "https://www.chicagofed.org/forms/rss/NewsReleases",
+    "https://www.chicagofed.org/forms/rss/Speeches",
+    "https://www.chicagofed.org/forms/rss/cdps",
+    "https://www.chicagofed.org/forms/rss/michiganeconomy",
+    "https://www.chicagofed.org/forms/rss/midwesteconomy",
+    "https://www.chicagofed.org/forms/rss/insights",
+)
 
 CATEGORIES = ("新闻", "智库", "央行")
 SITES = NEWS_SITES + THINK_TANK_SITES + CENTRAL_BANK_SITES
@@ -153,8 +193,12 @@ EXPLICIT_CHANNELS = [
     ("elcano", "feed", "https://www.realinstitutoelcano.org/en/feed/"),
     ("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"),
     ("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"),
-    ("federal-reserve", "feed", "https://www.federalreserve.gov/feeds/press_all.xml"),
+    ("federal-reserve", "homepage", "https://www.federalreserve.gov/newsevents.htm"),
+    ("federal-reserve", "homepage", "https://www.federalreserve.gov/publications.htm"),
+    *(("federal-reserve", "feed", url) for url in FEDERAL_RESERVE_BOARD_FEEDS),
     ("new-york-fed", "homepage", "https://www.newyorkfed.org/press"),
+    ("chicago-fed", "homepage", "https://www.chicagofed.org/publications/publication-listing"),
+    *(("chicago-fed", "feed", url) for url in CHICAGO_FED_FEEDS),
     ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/listindex"),
     ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/pressindex"),
     ("atlanta-fed", "feed", "https://www.atlantafed.org/rss/pubs"),
@@ -178,6 +222,14 @@ TARGETED_BACKFILLS = (
         "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260819a.htm",
         "title": "Minutes of the Federal Open Market Committee, July 28–29, 2026",
         "published_at": "2026-08-19T18:00:00+00:00",
+    },
+    {
+        "run_id": "backfill-chicago-fed-letter-526",
+        "site_id": "chicago-fed",
+        "category": "央行",
+        "url": "https://www.chicagofed.org/publications/chicago-fed-letter/2026/526",
+        "title": "Central Clearing Mandates and Market Power: Lessons from Swaps for U.S. Treasury Securities",
+        "published_at": "2026-08-20T00:00:00-05:00",
     },
 )
 
