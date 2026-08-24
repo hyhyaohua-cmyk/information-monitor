@@ -39,9 +39,14 @@ MAX_SITEMAPS_PER_SITE = 8
 MAX_SITEMAP_CHILDREN = 6
 MAX_SITEMAP_DEPTH = 2
 MAX_ENRICH_PER_PASS = 200
+TRANSLATION_MIN_INTERVAL = 0.8
 TITLE_FETCH_LIMIT = 2 * 1024 * 1024
 RETENTION_DAYS = 3
 USER_AGENT = "Mozilla/5.0 (compatible; LocalNewsMonitor/1.0; +http://localhost)"
+
+translation_request_lock = threading.Lock()
+translation_rate_limited = threading.Event()
+translation_last_request_at = 0.0
 
 NEWS_SITES = [
     ("bloomberg", "彭博", "https://www.bloomberg.com/latest"),
@@ -595,31 +600,75 @@ def likely_non_english_title(title: str) -> bool:
     return any(len(words & markers) >= 2 for markers in language_markers)
 
 
+def fetch_translation(url: str) -> FetchResult:
+    """Serialize public translation calls so a refresh does not trigger rate limits."""
+    global translation_last_request_at
+    with translation_request_lock:
+        wait_seconds = TRANSLATION_MIN_INTERVAL - (time.monotonic() - translation_last_request_at)
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+        result = fetch(url, 512 * 1024)
+        translation_last_request_at = time.monotonic()
+        return result
+
+
+def translation_was_rate_limited(error: str) -> bool:
+    return "HTTP Error 429" in error or "Too Many Requests" in error
+
+
+def parse_google_translation(body: bytes) -> tuple[str, str]:
+    data = json.loads(decode(body))
+    if data and isinstance(data[0], list) and data[0] and isinstance(data[0][0], str):
+        translated = data[0][0].strip()
+        language = data[0][1] if len(data[0]) > 1 and isinstance(data[0][1], str) else ""
+        return translated[:500], language.lower()
+    translated = "".join(part[0] for part in data[0] if part and part[0]).strip()
+    language = data[2] if len(data) > 2 and isinstance(data[2], str) else ""
+    return translated[:500], language.lower()
+
+
+def translate_with_mymemory(title: str) -> tuple[str, str, str]:
+    query = urllib.parse.urlencode({"q": title, "langpair": "en|zh-CN"})
+    result = fetch_translation("https://api.mymemory.translated.net/get?" + query)
+    if not result.ok:
+        return "", "备用翻译失败: " + result.error, ""
+    try:
+        data = json.loads(decode(result.body))
+        status = int(data.get("responseStatus") or 0)
+        if data.get("quotaFinished") or status == 429:
+            return "", "备用翻译失败: HTTP Error 429: Too Many Requests", ""
+        translated = str(data.get("responseData", {}).get("translatedText") or "").strip()
+        if status == 200 and translated and translated.casefold() != title.casefold():
+            return translated[:500], "", "en"
+        return "", "备用翻译服务没有返回结果", ""
+    except Exception as exc:
+        return "", f"备用翻译解析失败: {type(exc).__name__}: {exc}"[:500], ""
+
+
 def translate_title_with_language(title: str) -> tuple[str, str, str]:
     if re.search(r"[\u3400-\u9fff]", title):
         return title, "", "zh"
-    query = urllib.parse.urlencode({"client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": title})
-    endpoints = (
-        "https://translate.googleapis.com/translate_a/single?",
-        "https://translate.googleapis.com/translate_a/single?",
-        "https://translate.google.com/translate_a/single?",
-    )
-    last_error = "翻译服务没有返回结果"
-    for endpoint in endpoints:
-        result = fetch(endpoint + query, 512 * 1024)
-        if not result.ok:
-            last_error = "翻译失败: " + result.error
-            continue
+    query = urllib.parse.urlencode({"client": "dict-chrome-ex", "sl": "auto", "tl": "zh-CN", "q": title})
+    result = fetch_translation("https://clients5.google.com/translate_a/t?" + query)
+    google_error = ""
+    if result.ok:
         try:
-            data = json.loads(decode(result.body))
-            translated = "".join(part[0] for part in data[0] if part and part[0]).strip()
-            language = data[2] if len(data) > 2 and isinstance(data[2], str) else ""
+            translated, language = parse_google_translation(result.body)
             if translated:
-                return translated[:500], "", language.lower()
-            last_error = "翻译服务没有返回结果"
+                return translated, "", language
+            google_error = "翻译服务没有返回结果"
         except Exception as exc:
-            last_error = f"翻译解析失败: {type(exc).__name__}: {exc}"[:500]
-    return "", last_error, ""
+            google_error = f"翻译解析失败: {type(exc).__name__}: {exc}"[:500]
+    else:
+        google_error = "翻译失败: " + result.error
+
+    translated, fallback_error, language = translate_with_mymemory(title)
+    if translated:
+        return translated, "", language
+    combined_error = "；".join(error for error in (google_error, fallback_error) if error)[:500]
+    if translation_was_rate_limited(combined_error):
+        translation_rate_limited.set()
+    return "", combined_error or "翻译服务没有返回结果", ""
 
 
 def translate_title(title: str) -> tuple[str, str]:
@@ -821,6 +870,7 @@ def init_db() -> None:
             db.execute("ALTER TABLE reports ADD COLUMN language TEXT NOT NULL DEFAULT ''")
         if "published_at" not in report_columns:
             db.execute("ALTER TABLE reports ADD COLUMN published_at TEXT")
+        restore_rate_limited_translations(db)
         migrate_seen_to_fingerprints(db)
         db.executemany(
             "INSERT OR IGNORE INTO reported_fingerprints(url_hash,first_reported_at) VALUES(?,?)",
@@ -918,6 +968,14 @@ def apply_targeted_backfills(db: sqlite3.Connection) -> int:
         inserted += report.rowcount
         db.execute("UPDATE runs SET new_count=? WHERE id=?", (report.rowcount, item["run_id"]))
     return inserted
+
+
+def restore_rate_limited_translations(db: sqlite3.Connection) -> int:
+    """Let titles blocked by a temporary 429 response be retried on later refreshes."""
+    return db.execute(
+        "UPDATE reports SET enrich_attempts=0 WHERE title_zh='' AND enrich_attempts>=3 "
+        "AND (enrich_error LIKE '%HTTP Error 429%' OR enrich_error LIKE '%Too Many Requests%')"
+    ).rowcount
 
 
 def remove_historical_dated_reports(db: sqlite3.Connection) -> int:
@@ -1108,10 +1166,11 @@ def enrich_reports(limit: int = MAX_ENRICH_PER_PASS, site_id: str | None = None)
                 if language and language.split("-", 1)[0] != "en":
                     db.execute("DELETE FROM reports WHERE id=?", (report_id,))
                     continue
+                attempt_increment = 0 if translation_was_rate_limited(error) else 1
                 db.execute("""
                   UPDATE reports SET title=?,title_zh=?,enrich_error=?,language=?,
-                    enrich_attempts=enrich_attempts+1,enriched_at=? WHERE id=?
-                """, (title, title_zh, error or None, language, now, report_id))
+                    enrich_attempts=enrich_attempts+?,enriched_at=? WHERE id=?
+                """, (title, title_zh, error or None, language, attempt_increment, now, report_id))
         return sum(bool(row[2]) and (not row[4] or row[4].split("-", 1)[0] == "en") for row in results)
     finally:
         enrichment_lock.release()
@@ -1132,6 +1191,7 @@ def drain_enrichment(site_id: str | None = None, progress_callback=None) -> int:
     if not initial:
         return 0
     enriched = 0
+    translation_rate_limited.clear()
     max_rounds = (initial // 100 + 2) * 3
     for _ in range(max_rounds):
         before = pending_enrichment_count(site_id)
@@ -1141,6 +1201,8 @@ def drain_enrichment(site_id: str | None = None, progress_callback=None) -> int:
         after = pending_enrichment_count(site_id)
         if progress_callback:
             progress_callback(initial - after, initial)
+        if translation_rate_limited.is_set() or after >= before:
+            break
     return enriched
 
 
