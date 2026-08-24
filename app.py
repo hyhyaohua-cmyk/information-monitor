@@ -38,7 +38,8 @@ MAX_ITEMS_PER_CHANNEL = 10_000
 MAX_SITEMAPS_PER_SITE = 8
 MAX_SITEMAP_CHILDREN = 6
 MAX_SITEMAP_DEPTH = 2
-MAX_ENRICH_PER_PASS = 200
+MAX_ENRICH_PER_PASS = 50
+MAX_ENRICH_PER_REFRESH = 160
 TRANSLATION_MIN_INTERVAL = 0.8
 TITLE_FETCH_LIMIT = 2 * 1024 * 1024
 RETENTION_DAYS = 3
@@ -1186,21 +1187,34 @@ def pending_enrichment_count(site_id: str | None = None) -> int:
         ).fetchone()[0]
 
 
+def enrichment_batch_sizes(pending: int) -> list[int]:
+    remaining = min(pending, MAX_ENRICH_PER_REFRESH)
+    batches: list[int] = []
+    while remaining > 0:
+        batch_size = min(MAX_ENRICH_PER_PASS, remaining)
+        batches.append(batch_size)
+        remaining -= batch_size
+    return batches
+
+
 def drain_enrichment(site_id: str | None = None, progress_callback=None) -> int:
     initial = pending_enrichment_count(site_id)
     if not initial:
         return 0
     enriched = 0
+    attempted = 0
+    target = min(initial, MAX_ENRICH_PER_REFRESH)
     translation_rate_limited.clear()
-    max_rounds = (initial // 100 + 2) * 3
-    for _ in range(max_rounds):
+    for configured_batch_size in enrichment_batch_sizes(initial):
         before = pending_enrichment_count(site_id)
         if not before:
             break
-        enriched += enrich_reports(limit=100, site_id=site_id)
+        batch_size = min(configured_batch_size, before)
+        enriched += enrich_reports(limit=batch_size, site_id=site_id)
+        attempted += batch_size
         after = pending_enrichment_count(site_id)
         if progress_callback:
-            progress_callback(initial - after, initial)
+            progress_callback(min(attempted, target), target)
         if translation_rate_limited.is_set() or after >= before:
             break
     return enriched
@@ -1290,7 +1304,8 @@ def run_refresh(run_id: str, category: str) -> None:
                     inserted += cur.rowcount
             db.execute("UPDATE runs SET finished_at=?,status='done',new_count=?,ok_count=?,error_count=? WHERE id=?", (utcnow(), inserted, ok_count, error_count, run_id))
             cleanup_history(db)
-        refresh_state.update(message="正在补充网页标题和中文翻译…", phase="补充标题与翻译", completed=0, total=min(MAX_ENRICH_PER_PASS, inserted), percent=95)
+        enrichment_target = min(pending_enrichment_count(), MAX_ENRICH_PER_REFRESH)
+        refresh_state.update(message="正在补充网页标题和中文翻译…", phase="补充标题与翻译", completed=0, total=enrichment_target, percent=95)
         def enrichment_progress(done, total):
             percent = min(99, 95 + round(4 * done / max(1, total)))
             refresh_state.update(completed=done, total=total, percent=percent)

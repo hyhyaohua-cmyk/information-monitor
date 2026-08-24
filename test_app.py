@@ -198,6 +198,11 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(app.restore_rate_limited_translations(db), 1)
         self.assertEqual([row[0] for row in db.execute("SELECT enrich_attempts FROM reports ORDER BY rowid")], [0, 3, 3])
 
+    def test_enrichment_is_bounded_and_split_into_small_batches(self):
+        self.assertEqual(app.enrichment_batch_sizes(0), [])
+        self.assertEqual(app.enrichment_batch_sizes(120), [50, 50, 20])
+        self.assertEqual(app.enrichment_batch_sizes(1453), [50, 50, 50, 10])
+
     def test_title_from_article_url(self):
         url = "https://example.com/article/apple-releases-new-iphone.html?ref=home"
         self.assertEqual(app.title_from_url(url), "Apple releases new iphone")
