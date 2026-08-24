@@ -154,6 +154,50 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(app.translate_title("中文标题"), ("中文标题", ""))
         self.assertEqual(app.translate_title_with_language("中文标题"), ("中文标题", "", "zh"))
 
+    def test_google_rate_limit_uses_independent_fallback(self):
+        limited = app.FetchResult(False, "https://translate.googleapis.com/", "", error="HTTPError: HTTP Error 429: Too Many Requests")
+        fallback = app.FetchResult(
+            True,
+            "https://api.mymemory.translated.net/get",
+            "application/json",
+            b'{"responseData":{"translatedText":"\\u653f\\u7b56\\u51b3\\u5b9a\\u540e\\u5e02\\u573a\\u53cd\\u5f39"},"quotaFinished":false,"responseStatus":200}',
+        )
+        app.translation_rate_limited.clear()
+        with mock.patch.object(app, "fetch_translation", side_effect=[limited, fallback]) as fetch_translation:
+            translated, error, language = app.translate_title_with_language("Markets rally after policy decision")
+        self.assertEqual((translated, error, language), ("政策决定后市场反弹", "", "en"))
+        self.assertEqual(fetch_translation.call_count, 2)
+        self.assertFalse(app.translation_rate_limited.is_set())
+
+    def test_all_translation_providers_limited_remains_retryable(self):
+        limited = app.FetchResult(False, "https://example.com/", "", error="HTTPError: HTTP Error 429: Too Many Requests")
+        app.translation_rate_limited.clear()
+        with mock.patch.object(app, "fetch_translation", side_effect=[limited, limited]) as fetch_translation:
+            translated, error, language = app.translate_title_with_language("Markets rally after policy decision")
+        self.assertEqual((translated, language), ("", ""))
+        self.assertIn("429", error)
+        self.assertEqual(fetch_translation.call_count, 2)
+        self.assertTrue(app.translation_rate_limited.is_set())
+        app.translation_rate_limited.clear()
+
+    def test_chrome_translation_response_is_parsed(self):
+        body = '[["政策决定后市场反弹","en"]]'.encode()
+        self.assertEqual(app.parse_google_translation(body), ("政策决定后市场反弹", "en"))
+
+    def test_rate_limited_titles_are_unlocked_for_later_refresh(self):
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE reports(title_zh TEXT,enrich_attempts INTEGER,enrich_error TEXT)")
+        db.executemany(
+            "INSERT INTO reports VALUES(?,?,?)",
+            [
+                ("", 3, "翻译失败: HTTPError: HTTP Error 429: Too Many Requests"),
+                ("", 3, "翻译失败: HTTP Error 500"),
+                ("已有翻译", 3, "翻译失败: HTTPError: HTTP Error 429: Too Many Requests"),
+            ],
+        )
+        self.assertEqual(app.restore_rate_limited_translations(db), 1)
+        self.assertEqual([row[0] for row in db.execute("SELECT enrich_attempts FROM reports ORDER BY rowid")], [0, 3, 3])
+
     def test_title_from_article_url(self):
         url = "https://example.com/article/apple-releases-new-iphone.html?ref=home"
         self.assertEqual(app.title_from_url(url), "Apple releases new iphone")
