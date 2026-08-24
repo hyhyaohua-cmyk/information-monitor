@@ -19,6 +19,8 @@ class MonitorTests(unittest.TestCase):
             output = (app.ROOT / "test-public" / "index.html").read_text(encoding="utf-8")
             self.assertIn("信息链接监控报告", output)
             self.assertIn("前往 Actions 手动刷新", output)
+            self.assertIn("页面更新：${beijing(data.generated_at)}（北京时间）", output)
+            self.assertIn('"generated_at":', output)
             self.assertIn('<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>', output)
             self.assertIn('id="sitePicker"', output)
             self.assertIn('selectedSites.has(x.site_id)', output)
