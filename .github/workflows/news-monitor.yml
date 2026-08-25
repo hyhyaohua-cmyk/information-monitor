@@ -2,8 +2,11 @@ name: 刷新信息监控
 
 on:
   schedule:
-    # GitHub Actions 使用 UTC。新闻每小时刷新一次；北京时间 10:00 为 UTC 02:00。
-    - cron: '15 * * * *'
+    # GitHub Actions 使用 UTC。以下新闻时段对应北京时间 10:15–18:15、23:15、06:15。
+    - cron: '15 2-10 * * *'
+    - cron: '15 15 * * *'
+    - cron: '15 22 * * *'
+    # 智库和央行每天北京时间 10:00 刷新。
     - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
