@@ -1,6 +1,10 @@
 name: 刷新信息监控
 
 on:
+  schedule:
+    # GitHub Actions 使用 UTC。新闻每小时刷新一次；北京时间 10:00 为 UTC 02:00。
+    - cron: '15 * * * *'
+    - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       category:
@@ -45,7 +49,25 @@ jobs:
           fi
 
       - name: 刷新并生成静态报告
-        run: python3 -B github_actions.py --category "${{ inputs.category }}"
+        env:
+          MANUAL_CATEGORY: ${{ inputs.category }}
+          SCHEDULE_EXPRESSION: ${{ github.event.schedule }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            categories="${MANUAL_CATEGORY}"
+          elif [ "${SCHEDULE_EXPRESSION}" = "0 2 * * *" ]; then
+            categories="智库 央行"
+          else
+            categories="新闻"
+          fi
+
+          failed=0
+          for category in ${categories}; do
+            if ! python3 -B github_actions.py --category "${category}"; then
+              failed=1
+            fi
+          done
+          exit "${failed}"
 
       - name: 保存基线和去重状态
         if: always()
