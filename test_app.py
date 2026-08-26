@@ -211,6 +211,34 @@ class MonitorTests(unittest.TestCase):
         url = "https://example.com/article/apple-releases-new-iphone.html?ref=home"
         self.assertEqual(app.title_from_url(url), "Apple releases new iphone")
 
+    def test_title_from_url_removes_date_and_article_id(self):
+        self.assertEqual(
+            app.title_from_url("https://www.reuters.com/world/oil-prices-fall-2026-08-25"),
+            "Oil prices fall",
+        )
+        self.assertEqual(
+            app.title_from_url("https://www.marketwatch.com/story/stocks-rise-f02135e4"),
+            "Stocks rise",
+        )
+
+    def test_backfill_report_titles_from_urls(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute("CREATE TABLE reports(id INTEGER PRIMARY KEY,url TEXT,title TEXT)")
+        db.executemany(
+            "INSERT INTO reports(url,title) VALUES(?,?)",
+            [
+                ("https://example.com/news/market-rallies.html", ""),
+                ("https://example.com/news/123456", ""),
+                ("https://example.com/news/already-titled", "Existing title"),
+            ],
+        )
+        self.assertEqual(app.backfill_report_titles(db), 1)
+        self.assertEqual(
+            [row[0] for row in db.execute("SELECT title FROM reports ORDER BY id")],
+            ["Market rallies", "", "Existing title"],
+        )
+
     def test_title_from_url_rejects_numeric_id(self):
         self.assertEqual(app.title_from_url("https://example.com/news/123456"), "")
 
