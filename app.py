@@ -572,11 +572,24 @@ def title_from_url(url: str) -> str:
     if not candidates:
         return ""
     slug = re.sub(r"\.(?:html?|shtml|php|aspx?)$", "", candidates[-1], flags=re.I)
+    slug = re.sub(r"-(?:19|20)\d{2}-\d{2}-\d{2}$", "", slug)
+    slug = re.sub(r"-(?=[A-Za-z0-9]{8,}$)(?=[A-Za-z0-9]*\d)[A-Za-z0-9]+$", "", slug)
     slug = re.sub(r"[-_+]+", " ", slug)
     slug = re.sub(r"\s+", " ", slug).strip(" .")
-    if len(slug) < 4 or slug.isdigit() or re.fullmatch(r"[0-9a-f]{16,}", slug, re.I):
+    if len(slug) < 4 or slug.isdigit() or re.fullmatch(r"[A-Za-z0-9]{16,}", slug):
         return ""
     return (slug[:1].upper() + slug[1:])[:500]
+
+
+def backfill_report_titles(db: sqlite3.Connection) -> int:
+    """Populate immediately readable titles for sitemap-only report URLs."""
+    updates = []
+    for row in db.execute("SELECT id,url FROM reports WHERE title='' OR title IS NULL"):
+        title = title_from_url(row["url"])
+        if title:
+            updates.append((title, row["id"]))
+    db.executemany("UPDATE reports SET title=? WHERE id=?", updates)
+    return len(updates)
 
 
 def clean_title(title: str, url: str) -> str:
@@ -871,6 +884,7 @@ def init_db() -> None:
             db.execute("ALTER TABLE reports ADD COLUMN language TEXT NOT NULL DEFAULT ''")
         if "published_at" not in report_columns:
             db.execute("ALTER TABLE reports ADD COLUMN published_at TEXT")
+        backfill_report_titles(db)
         restore_rate_limited_translations(db)
         migrate_seen_to_fingerprints(db)
         db.executemany(
@@ -1155,7 +1169,7 @@ def enrich_reports(limit: int = MAX_ENRICH_PER_PASS, site_id: str | None = None)
             rows = db.execute(f"""
               SELECT id,url,title,title_zh FROM reports
               WHERE (title_zh='' OR language='') AND enrich_attempts<3{site_clause}
-              ORDER BY created_at DESC,id DESC LIMIT ?
+              ORDER BY CASE WHEN title='' THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT ?
             """, params).fetchall()
         if not rows:
             return 0
@@ -1300,7 +1314,8 @@ def run_refresh(run_id: str, category: str) -> None:
                     continue
                 marker = db.execute("INSERT OR IGNORE INTO reported_fingerprints(url_hash,first_reported_at) VALUES(?,?)", (url_fingerprint(url), now))
                 if marker.rowcount:
-                    cur = db.execute("INSERT OR IGNORE INTO reports(run_id,site_id,url,title,published_at,channels,created_at) VALUES(?,?,?,?,?,?,?)", (run_id, data["site_id"], url, data["title"], data["published_at"] or None, json.dumps(sorted(data["channels"]), ensure_ascii=False), now))
+                    title = clean_title(data["title"], url) if data["title"] else title_from_url(url)
+                    cur = db.execute("INSERT OR IGNORE INTO reports(run_id,site_id,url,title,published_at,channels,created_at) VALUES(?,?,?,?,?,?,?)", (run_id, data["site_id"], url, title, data["published_at"] or None, json.dumps(sorted(data["channels"]), ensure_ascii=False), now))
                     inserted += cur.rowcount
             db.execute("UPDATE runs SET finished_at=?,status='done',new_count=?,ok_count=?,error_count=? WHERE id=?", (utcnow(), inserted, ok_count, error_count, run_id))
             cleanup_history(db)
