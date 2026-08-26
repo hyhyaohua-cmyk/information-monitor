@@ -44,10 +44,10 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(app.WECHAT_SITES), 161)
         self.assertEqual(len(app.WECHAT_NAMES), len(set(app.WECHAT_NAMES)))
         self.assertTrue(all(app.SITE_CATEGORIES[site_id] == "公众号" for site_id, _, _ in app.WECHAT_SITES))
-        self.assertEqual(len(app.VERIFIED_WECHAT_URLS), 8)
+        self.assertEqual(len(app.VERIFIED_WECHAT_URLS), 9)
         configured_wechat = {name: url for _, name, url in app.WECHAT_SITES}
         self.assertTrue(all(configured_wechat[name] == url for name, url in app.VERIFIED_WECHAT_URLS.items()))
-        self.assertEqual(sum(bool(url) for _, _, url in app.WECHAT_SITES), 8)
+        self.assertEqual(sum(bool(url) for _, _, url in app.WECHAT_SITES), 9)
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         expected_reserve_banks = {
             "boston-fed", "new-york-fed", "philadelphia-fed", "cleveland-fed",
@@ -124,6 +124,12 @@ class MonitorTests(unittest.TestCase):
         self.assertFalse(app.likely_page(url, "https://example.com/", "新闻"))
         self.assertTrue(app.likely_page(url, "https://example.com/", "智库"))
         self.assertTrue(app.likely_page(url, "https://example.com/", "央行"))
+
+    def test_wechat_category_allows_only_public_wechat_article_cross_site(self):
+        article = "https://mp.weixin.qq.com/s/example-token"
+        self.assertTrue(app.likely_page(article, "https://example.com/publications", "公众号"))
+        self.assertFalse(app.likely_page(article, "https://example.com/publications", "新闻"))
+        self.assertFalse(app.likely_page("https://unrelated.example/story", "https://example.com/", "公众号"))
 
     def test_canonical_url_removes_tracking_and_fragment(self):
         self.assertEqual(app.canonical_url("HTTPS://Example.com/a/?utm_source=x&b=2#top"), "https://example.com/a?b=2")

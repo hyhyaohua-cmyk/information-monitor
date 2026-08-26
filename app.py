@@ -178,6 +178,7 @@ VERIFIED_WECHAT_URLS = {
     "中国汽车报": "https://www.cnautonews.com/",
     "观察者网": "https://www.guancha.cn/",
     "虎嗅APP": "https://www.huxiu.com/",
+    "东兴期货": "https://www.dxqh.net/richangbaogao.html?cid=65&pid=81&tab=1",
     "经济观察报": "https://www.eeo.com.cn/",
 }
 WECHAT_SITES = [
@@ -498,7 +499,8 @@ def is_ignored_content_url(url: str) -> bool:
 def likely_page(url: str, home: str, category: str = "新闻") -> bool:
     p = urllib.parse.urlsplit(url)
     skip_path = SKIP_PATH if category == "新闻" else BASIC_SKIP_PATH
-    return same_site(url, home) and not is_ignored_content_url(url) and not SKIP_EXT.search(url) and not skip_path.search(p.path) and url != canonical_url(home)
+    public_wechat_article = category == "公众号" and p.hostname == "mp.weixin.qq.com" and p.path.startswith("/s")
+    return (same_site(url, home) or public_wechat_article) and not is_ignored_content_url(url) and not SKIP_EXT.search(url) and not skip_path.search(p.path) and url != canonical_url(home)
 
 
 class PageParser(__import__("html.parser", fromlist=["HTMLParser"]).HTMLParser):
