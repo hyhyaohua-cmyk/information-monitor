@@ -95,7 +95,9 @@ THINK_TANK_SITES = [
     ("iiss", "英国国际战略研究所", "https://www.iiss.org/"),
     ("fpri", "美国外交政策研究所", "https://www.fpri.org/publications/special-reports/"),
     ("uschamber", "美国商会", "https://www.uschamber.com/"),
-    ("itif", "信息科技和创新基金", "https://itif.org/"),
+    ("itif", "信息科技和创新基金", "https://itif.org/publications/"),
+    ("bruegel", "布鲁盖尔研究所", "https://www.bruegel.org/publications"),
+    ("iisd", "国际可持续发展研究所", "https://www.iisd.org/publications"),
     ("jiia", "日本国际问题研究所", "https://www.jiia.or.jp/en/"),
     ("piie", "彼得森国际经济研究所", "https://www.piie.com/"),
     ("cfr", "外交关系委员会", "https://www.cfr.org/"),
@@ -300,6 +302,7 @@ TARGETED_BACKFILLS = (
 )
 
 OBSOLETE_CHANNELS = [
+    ("itif", "homepage", "https://itif.org/"),
     ("reuters", "sitemap", "https://www.reuters.com/sitemap/2026-07/"),
     ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news/publications"),
     ("brookings", "feed", "https://www.brookings.edu/comments/feed"),
