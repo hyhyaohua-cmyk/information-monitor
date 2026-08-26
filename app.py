@@ -170,8 +170,16 @@ WECHAT_NAMES = (
     "出新研究", "中美学者智库", "FT中文网", "大白话时事", "瑞承", "市井财经", "A视野", "凤凰网财经",
     "甲子光年", "东针", "早安汇市", "培风客", "深响", "人神共奋", "徐恺本恺", "宁南山", "锦缎",
 )
+VERIFIED_WECHAT_URLS = {
+    "证券时报": "https://www.stcn.com/",
+    "第一财经": "https://www.yicai.com/",
+    "乘联会": "https://www.cada.cn/Trends/list_91_1.html",
+    "投资界": "https://www.pedaily.cn/",
+    "中国汽车报": "https://www.cnautonews.com/",
+    "观察者网": "https://www.guancha.cn/",
+}
 WECHAT_SITES = [
-    (f"wechat-{hashlib.sha256(name.encode('utf-8')).hexdigest()[:12]}", name, "")
+    (f"wechat-{hashlib.sha256(name.encode('utf-8')).hexdigest()[:12]}", name, VERIFIED_WECHAT_URLS.get(name, ""))
     for name in WECHAT_NAMES
 ]
 
