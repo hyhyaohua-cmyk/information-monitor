@@ -19,6 +19,7 @@ on:
           - 新闻
           - 智库
           - 央行
+          - 公众号
 
 permissions:
   contents: read
