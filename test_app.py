@@ -26,7 +26,8 @@ class MonitorTests(unittest.TestCase):
             self.assertIn('<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>', output)
             self.assertIn('id="sitePicker"', output)
             self.assertIn('selectedSites.has(x.site_id)', output)
-            self.assertIn("siteCategories=['新闻','智库','央行','公众号']", output)
+            self.assertIn("siteCategories=['新闻','智库','央行']", output)
+            self.assertNotIn("公众号", output)
             self.assertIn("待提供公开入口", output)
             self.assertIn('data-category-all', output)
             self.assertIn('syncCategorySelectors', output)
@@ -41,13 +42,7 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(app.NEWS_SITES), 35)
         self.assertEqual(len(app.THINK_TANK_SITES), 38)
         self.assertEqual(len(app.CENTRAL_BANK_SITES), 17)
-        self.assertEqual(len(app.WECHAT_SITES), 161)
-        self.assertEqual(len(app.WECHAT_NAMES), len(set(app.WECHAT_NAMES)))
-        self.assertTrue(all(app.SITE_CATEGORIES[site_id] == "公众号" for site_id, _, _ in app.WECHAT_SITES))
-        self.assertEqual(len(app.VERIFIED_WECHAT_URLS), 8)
-        configured_wechat = {name: url for _, name, url in app.WECHAT_SITES}
-        self.assertTrue(all(configured_wechat[name] == url for name, url in app.VERIFIED_WECHAT_URLS.items()))
-        self.assertEqual(sum(bool(url) for _, _, url in app.WECHAT_SITES), 8)
+        self.assertEqual(app.CATEGORIES, ("新闻", "智库", "央行"))
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         expected_reserve_banks = {
             "boston-fed", "new-york-fed", "philadelphia-fed", "cleveland-fed",
@@ -133,17 +128,36 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT site_id FROM channels").fetchall(), [('active',)])
         self.assertEqual(db.execute("SELECT channel_id FROM seen").fetchall(), [(2,)])
 
+    def test_retired_categories_are_hidden_without_deleting_history(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+            CREATE TABLE sites(id TEXT PRIMARY KEY,name TEXT,home_url TEXT,category TEXT);
+            CREATE TABLE channels(id INTEGER PRIMARY KEY,site_id TEXT,kind TEXT,url TEXT,baseline_at TEXT,last_error TEXT,last_ok_at TEXT);
+            CREATE TABLE reports(id INTEGER PRIMARY KEY,site_id TEXT,created_at TEXT,channels TEXT);
+            CREATE TABLE runs(id TEXT PRIMARY KEY,started_at TEXT,category TEXT);
+            INSERT INTO sites VALUES('news','News','https://example.com','新闻');
+            INSERT INTO sites VALUES('legacy','Legacy','https://legacy.example','retired');
+            INSERT INTO channels VALUES(1,'news','homepage','https://example.com',NULL,NULL,NULL);
+            INSERT INTO channels VALUES(2,'legacy','homepage','https://legacy.example',NULL,NULL,NULL);
+            INSERT INTO reports VALUES(1,'news','2026-08-26T00:00:00+00:00','[]');
+            INSERT INTO reports VALUES(2,'legacy','2026-08-26T00:00:00+00:00','[]');
+            INSERT INTO runs VALUES('news-run','2026-08-26T00:00:00+00:00','新闻');
+            INSERT INTO runs VALUES('legacy-run','2026-08-26T00:00:00+00:00','retired');
+        """)
+        with mock.patch.object(app, "connect", return_value=db):
+            payload = app.state_payload()
+        self.assertEqual([site["id"] for site in payload["sites"]], ["news"])
+        self.assertEqual([channel["site_id"] for channel in payload["channels"]], ["news"])
+        self.assertEqual([report["site_id"] for report in payload["reports"]], ["news"])
+        self.assertEqual([run["id"] for run in payload["runs"]], ["news-run"])
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 2)
+
     def test_research_categories_allow_publication_paths(self):
         url = "https://example.com/category/reports"
         self.assertFalse(app.likely_page(url, "https://example.com/", "新闻"))
         self.assertTrue(app.likely_page(url, "https://example.com/", "智库"))
         self.assertTrue(app.likely_page(url, "https://example.com/", "央行"))
-
-    def test_wechat_category_allows_only_public_wechat_article_cross_site(self):
-        article = "https://mp.weixin.qq.com/s/example-token"
-        self.assertTrue(app.likely_page(article, "https://example.com/publications", "公众号"))
-        self.assertFalse(app.likely_page(article, "https://example.com/publications", "新闻"))
-        self.assertFalse(app.likely_page("https://unrelated.example/story", "https://example.com/", "公众号"))
 
     def test_canonical_url_removes_tracking_and_fragment(self):
         self.assertEqual(app.canonical_url("HTTPS://Example.com/a/?utm_source=x&b=2#top"), "https://example.com/a?b=2")

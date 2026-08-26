@@ -148,43 +148,6 @@ CENTRAL_BANK_SITES = [
     ("reserve-bank-australia", "澳洲联储", "https://www.rba.gov.au/"),
 ]
 
-WECHAT_NAMES = (
-    "证券时报", "第一财经", "乘联会", "债海观潮", "九州期货", "投资界", "付鹏的投资世界", "中原期货",
-    "岳读债市", "中国汽车报", "观察者网", "克而瑞地产研究", "云晨期货", "36氪", "财经大健康", "虎嗅APP",
-    "清华金融评论", "国君宏观研究", "财经十一人", "信达期货", "秦小明", "巴伦周刊", "叶檀财经", "地球知识局",
-    "环行星球", "如是金融研究院", "亨特hunter", "经济观察报", "于博宏观札记", "债券池", "泽平宏观", "国泰君安证券研究",
-    "中金点睛", "吴晓波频道", "东兴期货", "倍特期货", "中国国际期货", "机器之心", "洞见研报", "中信建投基金",
-    "微观系列", "川阅全球宏观", "中金策略", "起朱楼宴宾客", "地产加把劲", "修炼投资的水晶球", "周浩宏观研究", "三折人生",
-    "一路向东北策略", "澎湃新闻", "中国基金报", "券商中国", "环球网", "靳毅投资思考", "证券市场红周刊", "财经E法",
-    "首席经济学家论坛", "财联社", "中信证券研究", "科工力量", "中新经纬", "明晰笔谈", "量子位", "三联生活周刊",
-    "上海证券报", "深燃", "新浪财经", "芝商所CMEGroup", "非凡油条", "中金货币金融研究", "全说能源", "兽楼处",
-    "交易论道", "CC情报局", "致我们深爱的债券市场", "李迅雷金融与投资", "智堡Wisburg", "饭统戴老板", "功夫财经", "每日经济新闻",
-    "央视财经", "中国新闻周刊", "智本社", "中国金融四十人论坛", "雪涛宏观笔记", "Wind万得", "牛弹琴", "钟正生经济分析",
-    "硅星人", "灰岩金融科技", "龙谈价值", "灰岩国际咨询", "参考消息", "IT桔子", "市界", "时代周报",
-    "宏观闻涛声", "华夏能源网", "局外人的视界", "市值观察", "新潮沉思录", "香帅的金融江湖", "深网腾讯新闻", "冰川思享号",
-    "东四十条资本", "国是直通车", "北京日报", "e公司", "环球时报", "远川研究所", "对冲研投", "石油Link",
-    "荆棘阿甘", "AIGC开放社区", "阿尔法工场研究院", "侠客岛", "记忆承载3", "ETF进化论", "陈李lichen", "交运鑫观点",
-    "字母榜", "债券圈", "北京商报", "RMB交易与研究", "星海情报局", "姜超财经宵夜", "网易财经智库", "不严肃问题研究室",
-    "陆家嘴扫地僧", "秦朔朋友圈", "赵伟宏观探索", "侃见财经", "金错刀", "一号企业家", "21金融圈", "他山之石观投资",
-    "美国宗人府", "债券人", "三思社", "洋恺宏观", "橡树资本Oaktree Capital", "南方周末", "界面新闻", "ZAKER",
-    "出新研究", "中美学者智库", "FT中文网", "大白话时事", "瑞承", "市井财经", "A视野", "凤凰网财经",
-    "甲子光年", "东针", "早安汇市", "培风客", "深响", "人神共奋", "徐恺本恺", "宁南山", "锦缎",
-)
-VERIFIED_WECHAT_URLS = {
-    "证券时报": "https://www.stcn.com/",
-    "第一财经": "https://www.yicai.com/",
-    "乘联会": "https://www.cada.cn/Trends/list_91_1.html",
-    "投资界": "https://www.pedaily.cn/",
-    "中国汽车报": "https://www.cnautonews.com/",
-    "观察者网": "https://www.guancha.cn/",
-    "虎嗅APP": "https://www.huxiu.com/",
-    "经济观察报": "https://www.eeo.com.cn/",
-}
-WECHAT_SITES = [
-    (f"wechat-{hashlib.sha256(name.encode('utf-8')).hexdigest()[:12]}", name, VERIFIED_WECHAT_URLS.get(name, ""))
-    for name in WECHAT_NAMES
-]
-
 FEDERAL_RESERVE_BANK_IDS = frozenset({
     "boston-fed",
     "new-york-fed",
@@ -273,13 +236,12 @@ RESERVE_BANK_AUSTRALIA_FEEDS = (
     "https://www.rba.gov.au/rss/rss-cb-changes-to-tables.xml",
 )
 
-CATEGORIES = ("新闻", "智库", "央行", "公众号")
-SITES = NEWS_SITES + THINK_TANK_SITES + CENTRAL_BANK_SITES + WECHAT_SITES
+CATEGORIES = ("新闻", "智库", "央行")
+SITES = NEWS_SITES + THINK_TANK_SITES + CENTRAL_BANK_SITES
 SITE_CATEGORIES = {
     **{site_id: "新闻" for site_id, _, _ in NEWS_SITES},
     **{site_id: "智库" for site_id, _, _ in THINK_TANK_SITES},
     **{site_id: "央行" for site_id, _, _ in CENTRAL_BANK_SITES},
-    **{site_id: "公众号" for site_id, _, _ in WECHAT_SITES},
 }
 
 EXPLICIT_CHANNELS = [
@@ -290,7 +252,6 @@ EXPLICIT_CHANNELS = [
     ("elcano", "feed", "https://www.realinstitutoelcano.org/en/feed/"),
     ("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"),
     ("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"),
-    ("wechat-85329b5e8541", "feed", "https://rss.huxiu.com/"),
     ("federal-reserve", "homepage", "https://www.federalreserve.gov/newsevents.htm"),
     ("federal-reserve", "homepage", "https://www.federalreserve.gov/publications.htm"),
     *(("federal-reserve", "feed", url) for url in FEDERAL_RESERVE_BOARD_FEEDS),
@@ -498,8 +459,7 @@ def is_ignored_content_url(url: str) -> bool:
 def likely_page(url: str, home: str, category: str = "新闻") -> bool:
     p = urllib.parse.urlsplit(url)
     skip_path = SKIP_PATH if category == "新闻" else BASIC_SKIP_PATH
-    public_wechat_article = category == "公众号" and p.hostname == "mp.weixin.qq.com" and p.path.startswith("/s")
-    return (same_site(url, home) or public_wechat_article) and not is_ignored_content_url(url) and not SKIP_EXT.search(url) and not skip_path.search(p.path) and url != canonical_url(home)
+    return same_site(url, home) and not is_ignored_content_url(url) and not SKIP_EXT.search(url) and not skip_path.search(p.path) and url != canonical_url(home)
 
 
 class PageParser(__import__("html.parser", fromlist=["HTMLParser"]).HTMLParser):
@@ -1414,17 +1374,19 @@ def start_refresh(category: str = "新闻") -> tuple[bool, str]:
 
 def state_payload() -> dict:
     with connect() as db:
-        sites = [dict(r) for r in db.execute("""
+        placeholders = ",".join("?" for _ in CATEGORIES)
+        sites = [dict(r) for r in db.execute(f"""
           SELECT s.id,s.name,s.home_url,s.category,CASE WHEN s.home_url<>'' THEN 1 ELSE 0 END active,
             COUNT(c.id) channel_count,
             SUM(CASE WHEN c.baseline_at IS NOT NULL THEN 1 ELSE 0 END) baseline_count,
             SUM(CASE WHEN c.last_error IS NOT NULL THEN 1 ELSE 0 END) error_count,
             MAX(c.last_ok_at) last_ok_at
-          FROM sites s LEFT JOIN channels c ON c.site_id=s.id GROUP BY s.id ORDER BY s.name
-        """)]
-        channels = [dict(r) for r in db.execute("SELECT c.*,s.name site_name,s.category FROM channels c JOIN sites s ON s.id=c.site_id ORDER BY s.category,s.name,c.kind,c.url")]
-        reports = [dict(r) for r in db.execute("SELECT r.*,s.name site_name,s.category FROM reports r JOIN sites s ON s.id=r.site_id ORDER BY r.created_at DESC,r.id DESC LIMIT 2000")]
-        runs = [dict(r) for r in db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 30")]
+          FROM sites s LEFT JOIN channels c ON c.site_id=s.id
+          WHERE s.category IN ({placeholders}) GROUP BY s.id ORDER BY s.name
+        """, CATEGORIES)]
+        channels = [dict(r) for r in db.execute(f"SELECT c.*,s.name site_name,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE s.category IN ({placeholders}) ORDER BY s.category,s.name,c.kind,c.url", CATEGORIES)]
+        reports = [dict(r) for r in db.execute(f"SELECT r.*,s.name site_name,s.category FROM reports r JOIN sites s ON s.id=r.site_id WHERE s.category IN ({placeholders}) ORDER BY r.created_at DESC,r.id DESC LIMIT 2000", CATEGORIES)]
+        runs = [dict(r) for r in db.execute(f"SELECT * FROM runs WHERE category IN ({placeholders}) ORDER BY started_at DESC LIMIT 30", CATEGORIES)]
     for r in reports:
         r["channels"] = json.loads(r["channels"])
     return {"refresh": dict(refresh_state), "sites": sites, "channels": channels, "reports": reports, "runs": runs}
