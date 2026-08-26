@@ -178,7 +178,6 @@ VERIFIED_WECHAT_URLS = {
     "中国汽车报": "https://www.cnautonews.com/",
     "观察者网": "https://www.guancha.cn/",
     "虎嗅APP": "https://www.huxiu.com/",
-    "东兴期货": "https://www.dxqh.net/richangbaogao.html?cid=65&pid=81&tab=1",
     "经济观察报": "https://www.eeo.com.cn/",
 }
 WECHAT_SITES = [

@@ -44,10 +44,10 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(app.WECHAT_SITES), 161)
         self.assertEqual(len(app.WECHAT_NAMES), len(set(app.WECHAT_NAMES)))
         self.assertTrue(all(app.SITE_CATEGORIES[site_id] == "公众号" for site_id, _, _ in app.WECHAT_SITES))
-        self.assertEqual(len(app.VERIFIED_WECHAT_URLS), 9)
+        self.assertEqual(len(app.VERIFIED_WECHAT_URLS), 8)
         configured_wechat = {name: url for _, name, url in app.WECHAT_SITES}
         self.assertTrue(all(configured_wechat[name] == url for name, url in app.VERIFIED_WECHAT_URLS.items()))
-        self.assertEqual(sum(bool(url) for _, _, url in app.WECHAT_SITES), 9)
+        self.assertEqual(sum(bool(url) for _, _, url in app.WECHAT_SITES), 8)
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         expected_reserve_banks = {
             "boston-fed", "new-york-fed", "philadelphia-fed", "cleveland-fed",
