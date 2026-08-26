@@ -26,7 +26,8 @@ class MonitorTests(unittest.TestCase):
             self.assertIn('<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>', output)
             self.assertIn('id="sitePicker"', output)
             self.assertIn('selectedSites.has(x.site_id)', output)
-            self.assertIn("siteCategories=['新闻','智库','央行']", output)
+            self.assertIn("siteCategories=['新闻','智库','央行','公众号']", output)
+            self.assertIn("待提供公开入口", output)
             self.assertIn('data-category-all', output)
             self.assertIn('syncCategorySelectors', output)
             (app.ROOT / "test-public" / "index.html").unlink()
@@ -40,6 +41,9 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(app.NEWS_SITES), 35)
         self.assertEqual(len(app.THINK_TANK_SITES), 38)
         self.assertEqual(len(app.CENTRAL_BANK_SITES), 17)
+        self.assertEqual(len(app.WECHAT_SITES), 161)
+        self.assertEqual(len(app.WECHAT_NAMES), len(set(app.WECHAT_NAMES)))
+        self.assertTrue(all(app.SITE_CATEGORIES[site_id] == "公众号" for site_id, _, _ in app.WECHAT_SITES))
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         expected_reserve_banks = {
             "boston-fed", "new-york-fed", "philadelphia-fed", "cleveland-fed",
