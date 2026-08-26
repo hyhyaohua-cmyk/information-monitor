@@ -177,6 +177,8 @@ VERIFIED_WECHAT_URLS = {
     "投资界": "https://www.pedaily.cn/",
     "中国汽车报": "https://www.cnautonews.com/",
     "观察者网": "https://www.guancha.cn/",
+    "虎嗅APP": "https://www.huxiu.com/",
+    "经济观察报": "https://www.eeo.com.cn/",
 }
 WECHAT_SITES = [
     (f"wechat-{hashlib.sha256(name.encode('utf-8')).hexdigest()[:12]}", name, VERIFIED_WECHAT_URLS.get(name, ""))
@@ -288,6 +290,7 @@ EXPLICIT_CHANNELS = [
     ("elcano", "feed", "https://www.realinstitutoelcano.org/en/feed/"),
     ("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"),
     ("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"),
+    ("wechat-85329b5e8541", "feed", "https://rss.huxiu.com/"),
     ("federal-reserve", "homepage", "https://www.federalreserve.gov/newsevents.htm"),
     ("federal-reserve", "homepage", "https://www.federalreserve.gov/publications.htm"),
     *(("federal-reserve", "feed", url) for url in FEDERAL_RESERVE_BOARD_FEEDS),
