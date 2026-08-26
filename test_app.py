@@ -38,7 +38,7 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(set(app.SITE_CATEGORIES), set(ids))
         self.assertEqual({app.SITE_CATEGORIES[site_id] for site_id in ids}, set(app.CATEGORIES))
         self.assertEqual(len(app.NEWS_SITES), 35)
-        self.assertEqual(len(app.THINK_TANK_SITES), 36)
+        self.assertEqual(len(app.THINK_TANK_SITES), 38)
         self.assertEqual(len(app.CENTRAL_BANK_SITES), 17)
         self.assertEqual(app.SITE_CATEGORIES["federal-reserve"], "央行")
         expected_reserve_banks = {
@@ -66,6 +66,10 @@ class MonitorTests(unittest.TestCase):
         self.assertIn(("adbi", "feed", "https://www.adb.org/rss/adbi"), app.EXPLICIT_CHANNELS)
         self.assertIn(("chatham-house", "feed", "https://www.chathamhouse.org/path/whatsnew.xml"), app.EXPLICIT_CHANNELS)
         self.assertIn(("fabian-society", "feed", "https://fabians.org.uk/sitemap.rss"), app.EXPLICIT_CHANNELS)
+        think_tank_sites = {site_id: (name, url) for site_id, name, url in app.THINK_TANK_SITES}
+        self.assertEqual(think_tank_sites["itif"][1], "https://itif.org/publications/")
+        self.assertEqual(think_tank_sites["bruegel"][1], "https://www.bruegel.org/publications")
+        self.assertEqual(think_tank_sites["iisd"][1], "https://www.iisd.org/publications")
         expected_global_central_banks = {
             "bank-of-england", "ecb", "bank-of-japan", "reserve-bank-australia",
         }
