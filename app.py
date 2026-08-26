@@ -953,6 +953,7 @@ def init_db() -> None:
             db.execute("DELETE FROM seen WHERE channel_id IN (SELECT id FROM channels WHERE site_id=? AND kind=? AND url=?)", (site_id, kind, obsolete_url))
             db.execute("DELETE FROM channels WHERE site_id=? AND kind=? AND url=?", (site_id, kind, obsolete_url))
         remove_configured_sites(db)
+        remove_inactive_site_channels(db)
         db.execute("UPDATE runs SET status='interrupted',finished_at=? WHERE status='running'", (utcnow(),))
         prune_sitemaps(db)
         cleanup_history(db)
@@ -1007,6 +1008,17 @@ def remove_configured_sites(db: sqlite3.Connection) -> int:
         db.execute("DELETE FROM channels WHERE site_id=?", (site_id,))
         removed += db.execute("DELETE FROM sites WHERE id=?", (site_id,)).rowcount
     return removed
+
+
+def remove_inactive_site_channels(db: sqlite3.Connection) -> int:
+    channel_ids = [row[0] for row in db.execute(
+        "SELECT c.id FROM channels c JOIN sites s ON s.id=c.site_id WHERE s.home_url=''"
+    )]
+    if not channel_ids:
+        return 0
+    placeholders = ",".join("?" for _ in channel_ids)
+    db.execute(f"DELETE FROM seen WHERE channel_id IN ({placeholders})", channel_ids)
+    return db.execute(f"DELETE FROM channels WHERE id IN ({placeholders})", channel_ids).rowcount
 
 
 def apply_targeted_backfills(db: sqlite3.Connection) -> int:
@@ -1303,7 +1315,7 @@ def run_refresh(run_id: str, category: str) -> None:
         pending: list[sqlite3.Row]
         with connect() as db:
             prune_sitemaps(db)
-            pending = db.execute("SELECT c.*,s.home_url,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE s.category=? ORDER BY c.id", (category,)).fetchall()
+            pending = db.execute("SELECT c.*,s.home_url,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE s.category=? AND s.home_url<>'' ORDER BY c.id", (category,)).fetchall()
         refresh_state.update(message=f"正在检查 {len(pending)} 个采集通道…", phase="检查采集通道", completed=0, total=len(pending), percent=15)
         processed: set[int] = set()
         candidates: dict[str, dict] = {}
@@ -1353,7 +1365,7 @@ def run_refresh(run_id: str, category: str) -> None:
                         add_channel(db, row["site_id"], "sitemap", child, depth=row["depth"] + 1)
                 prune_sitemaps(db)
                 if any(children for _, _, _, children, _, _ in results):
-                    pending = db.execute("SELECT c.*,s.home_url,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE c.kind='sitemap' AND s.category=?", (category,)).fetchall()
+                    pending = db.execute("SELECT c.*,s.home_url,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE c.kind='sitemap' AND s.category=? AND s.home_url<>''", (category,)).fetchall()
 
         inserted = 0
         refresh_state.update(message="正在整理新增链接…", phase="生成报告", completed=0, total=len(candidates), percent=92)
