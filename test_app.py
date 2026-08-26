@@ -284,6 +284,12 @@ class MonitorTests(unittest.TestCase):
         self.assertTrue(app.is_ignored_content_url("https://finance.biggo.com/quote/BAC-PK"))
         self.assertFalse(app.is_ignored_content_url("https://finance.biggo.com/topics/Latest"))
 
+    def test_non_english_reuters_pages_are_ignored(self):
+        self.assertTrue(app.is_ignored_content_url("https://www.reuters.com/es/mundo/ARTICLE-ID-2026-08-25"))
+        self.assertTrue(app.is_ignored_content_url("https://www.reuters.com/pt/negocio/ARTICLE-ID-2026-08-25"))
+        self.assertTrue(app.is_ignored_content_url("https://www.reuters.com/fact-check/espanol/ARTICLE-ID-2026-08-25"))
+        self.assertFalse(app.is_ignored_content_url("https://www.reuters.com/world/asia-pacific/english-story-2026-08-25"))
+
     def test_beijing_and_eastern_dates_are_both_current(self):
         now = dt.datetime(2026, 8, 16, 3, 0, tzinfo=dt.timezone.utc)
         allowed = app.current_news_dates(now)

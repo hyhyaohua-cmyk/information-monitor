@@ -444,6 +444,12 @@ def is_ignored_content_url(url: str) -> bool:
     quote_page_hosts = {"finance.yahoo.com", "finance.biggo.com"}
     if host in quote_page_hosts and (path == "/quote" or path.startswith("/quote/")):
         return True
+    if host == "reuters.com" or host.endswith(".reuters.com"):
+        first_segment = path.strip("/").split("/", 1)[0]
+        if first_segment in {"ar", "de", "es", "fr", "it", "ja", "pt", "ru", "zh"}:
+            return True
+        if path.startswith(("/fact-check/espanol/", "/fact-check/portugues/")):
+            return True
     return False
 
 
