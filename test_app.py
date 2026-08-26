@@ -119,6 +119,20 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 0)
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reported_fingerprints").fetchone()[0], 1)
 
+    def test_inactive_sites_do_not_keep_stale_channels(self):
+        db = sqlite3.connect(":memory:")
+        db.executescript("""
+            CREATE TABLE sites(id TEXT PRIMARY KEY,home_url TEXT NOT NULL);
+            CREATE TABLE channels(id INTEGER PRIMARY KEY,site_id TEXT NOT NULL);
+            CREATE TABLE seen(channel_id INTEGER NOT NULL,url_hash BLOB,first_seen_at TEXT);
+            INSERT INTO sites VALUES('pending',''),('active','https://example.com/');
+            INSERT INTO channels VALUES(1,'pending'),(2,'active');
+            INSERT INTO seen VALUES(1,X'01','2026-08-26T00:00:00+00:00'),(2,X'02','2026-08-26T00:00:00+00:00');
+        """)
+        self.assertEqual(app.remove_inactive_site_channels(db), 1)
+        self.assertEqual(db.execute("SELECT site_id FROM channels").fetchall(), [('active',)])
+        self.assertEqual(db.execute("SELECT channel_id FROM seen").fetchall(), [(2,)])
+
     def test_research_categories_allow_publication_paths(self):
         url = "https://example.com/category/reports"
         self.assertFalse(app.likely_page(url, "https://example.com/", "新闻"))
