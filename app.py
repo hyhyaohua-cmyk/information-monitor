@@ -339,6 +339,33 @@ def url_fingerprint(url: str) -> bytes:
     return hashlib.sha256(url.encode("utf-8")).digest()
 
 
+def alternate_scheme_url(url: str) -> str | None:
+    """Return the same HTTP(S) URL with the other scheme."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    scheme = "https" if parsed.scheme == "http" else "http"
+    return urllib.parse.urlunsplit((scheme, parsed.netloc, parsed.path, parsed.query, parsed.fragment))
+
+
+def unseen_channel_items(items: dict[str, str], old: set[bytes]) -> tuple[list[tuple[str, str]], list[tuple[bytes, str]]]:
+    """Separate genuinely new URLs from HTTP/HTTPS aliases already in a channel baseline."""
+    candidates: list[tuple[str, str]] = []
+    hashes_to_record: list[tuple[bytes, str]] = []
+    for url, title in items.items():
+        fingerprint = url_fingerprint(url)
+        if fingerprint in old:
+            continue
+        hashes_to_record.append((fingerprint, url))
+        alternate = alternate_scheme_url(url)
+        if alternate is None or url_fingerprint(alternate) not in old:
+            candidates.append((url, title))
+    return candidates, hashes_to_record
+
+
 def retention_cutoff() -> str:
     value = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=RETENTION_DAYS)
     return value.isoformat(timespec="seconds")
@@ -915,6 +942,7 @@ def init_db() -> None:
         remove_configured_sites(db)
         remove_inactive_site_channels(db)
         db.execute("UPDATE runs SET status='interrupted',finished_at=? WHERE status='running'", (utcnow(),))
+        remove_scheme_duplicate_reports(db)
         prune_sitemaps(db)
         cleanup_history(db)
         remove_historical_dated_reports(db)
@@ -953,6 +981,44 @@ def cleanup_history(db: sqlite3.Connection) -> tuple[int, int]:
     report_count = db.execute("DELETE FROM reports WHERE created_at<?", (cutoff,)).rowcount
     run_count = db.execute("DELETE FROM runs WHERE COALESCE(finished_at,started_at)<?", (cutoff,)).rowcount
     return report_count, run_count
+
+
+def remove_scheme_duplicate_reports(db: sqlite3.Connection) -> int:
+    """Remove reports caused only by a source switching between HTTP and HTTPS."""
+    removed = 0
+    affected_runs: set[str] = set()
+    site_ids = [row[0] for row in db.execute("SELECT DISTINCT site_id FROM reports")]
+    for site_id in site_ids:
+        first_seen: dict[bytes, str] = {}
+        for row in db.execute(
+            "SELECT se.url_hash,MIN(se.first_seen_at) FROM seen se "
+            "JOIN channels c ON c.id=se.channel_id WHERE c.site_id=? GROUP BY se.url_hash",
+            (site_id,),
+        ):
+            first_seen[bytes(row[0])] = row[1]
+        doomed: list[int] = []
+        for row in db.execute(
+            "SELECT r.id,r.run_id,r.url,ru.started_at FROM reports r "
+            "JOIN runs ru ON ru.id=r.run_id WHERE r.site_id=?",
+            (site_id,),
+        ):
+            alternate = alternate_scheme_url(row["url"])
+            if alternate is None:
+                continue
+            seen_at = first_seen.get(url_fingerprint(alternate))
+            if seen_at is not None and seen_at < row["started_at"]:
+                doomed.append(row["id"])
+                affected_runs.add(row["run_id"])
+        for start in range(0, len(doomed), 500):
+            batch = doomed[start:start + 500]
+            placeholders = ",".join("?" for _ in batch)
+            removed += db.execute(f"DELETE FROM reports WHERE id IN ({placeholders})", batch).rowcount
+    for run_id in affected_runs:
+        db.execute(
+            "UPDATE runs SET new_count=(SELECT COUNT(*) FROM reports WHERE run_id=?) WHERE id=?",
+            (run_id, run_id),
+        )
+    return removed
 
 
 def remove_configured_sites(db: sqlite3.Connection) -> int:
@@ -1309,8 +1375,11 @@ def run_refresh(run_id: str, category: str) -> None:
                     now = utcnow()
                     is_baseline = row["baseline_at"] is None
                     old = {bytes(x[0]) for x in db.execute("SELECT url_hash FROM seen WHERE channel_id=?", (channel_id,))}
-                    new_items = [(url, title) for url, title in items.items() if url_fingerprint(url) not in old]
-                    db.executemany("INSERT OR IGNORE INTO seen(channel_id,url_hash,first_seen_at) VALUES(?,?,?)", [(channel_id, url_fingerprint(u), now) for u, _ in new_items])
+                    new_items, hashes_to_record = unseen_channel_items(items, old)
+                    db.executemany(
+                        "INSERT OR IGNORE INTO seen(channel_id,url_hash,first_seen_at) VALUES(?,?,?)",
+                        [(channel_id, fingerprint, now) for fingerprint, _ in hashes_to_record],
+                    )
                     db.execute("UPDATE channels SET baseline_at=COALESCE(baseline_at,?),last_ok_at=?,last_error=NULL,last_count=? WHERE id=?", (now, now, len(items), channel_id))
                     if not is_baseline:
                         for url, title in new_items:
