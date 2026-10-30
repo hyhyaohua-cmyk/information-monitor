@@ -165,6 +165,12 @@ class MonitorTests(unittest.TestCase):
     def test_canonical_url_removes_tracking_and_fragment(self):
         self.assertEqual(app.canonical_url("HTTPS://Example.com/a/?utm_source=x&b=2#top"), "https://example.com/a?b=2")
 
+    def test_http_https_switch_is_not_treated_as_new(self):
+        old = {app.url_fingerprint("https://example.com/story")}
+        candidates, hashes = app.unseen_channel_items({"http://example.com/story": "Story"}, old)
+        self.assertEqual(candidates, [])
+        self.assertEqual(hashes, [(app.url_fingerprint("http://example.com/story"), "http://example.com/story")])
+
     def test_feed_parser(self):
         body = b'''<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Hello</title><link href="/story/1" /></entry></feed>'''
         self.assertEqual(app.parse_feed(body, "https://example.com/feed"), {"https://example.com/story/1": "Hello"})
@@ -419,6 +425,31 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 1)
         self.assertEqual(db.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 1)
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reported_fingerprints").fetchone()[0], 1)
+
+    def test_scheme_duplicate_reports_are_removed_and_run_count_is_repaired(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+          CREATE TABLE channels(id INTEGER PRIMARY KEY,site_id TEXT);
+          CREATE TABLE seen(channel_id INTEGER,url_hash BLOB,first_seen_at TEXT);
+          CREATE TABLE runs(id TEXT PRIMARY KEY,started_at TEXT,new_count INTEGER);
+          CREATE TABLE reports(id INTEGER PRIMARY KEY,run_id TEXT,site_id TEXT,url TEXT);
+          INSERT INTO channels VALUES(1,'fed');
+          INSERT INTO runs VALUES('run','2026-10-30T05:00:00+00:00',2);
+          INSERT INTO reports VALUES(1,'run','fed','http://example.com/old');
+          INSERT INTO reports VALUES(2,'run','fed','https://example.com/new');
+        """)
+        db.execute(
+            "INSERT INTO seen VALUES(?,?,?)",
+            (1, app.url_fingerprint("https://example.com/old"), "2026-08-01T00:00:00+00:00"),
+        )
+        db.execute(
+            "INSERT INTO seen VALUES(?,?,?)",
+            (1, app.url_fingerprint("http://example.com/new"), "2026-10-30T05:00:00+00:00"),
+        )
+        self.assertEqual(app.remove_scheme_duplicate_reports(db), 1)
+        self.assertEqual([row[0] for row in db.execute("SELECT url FROM reports")], ["https://example.com/new"])
+        self.assertEqual(db.execute("SELECT new_count FROM runs WHERE id='run'").fetchone()[0], 1)
 
     def test_targeted_backfill_is_inserted_once(self):
         db = sqlite3.connect(":memory:")
