@@ -94,7 +94,21 @@ class MonitorTests(unittest.TestCase):
                 if channel_site_id == site_id and kind == "feed"
             }
             self.assertEqual(configured_feeds, expected_feeds)
+        self.assertIn(
+            ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news/publications"),
+            app.EXPLICIT_CHANNELS,
+        )
+        self.assertIn(
+            ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/publications"),
+            app.OBSOLETE_CHANNELS,
+        )
         self.assertTrue({"scmp-business", "morningstar", "tradingeconomics", "straitstimes", "tradingview"}.issubset(app.REMOVED_SITE_IDS))
+
+    def test_workflow_has_off_peak_and_fallback_research_refreshes(self):
+        workflow = (app.ROOT / ".github" / "workflows" / "news-monitor.yml").read_text(encoding="utf-8")
+        self.assertIn("cron: '7 2 * * *'", workflow)
+        self.assertIn("cron: '7 5 * * *'", workflow)
+        self.assertIn('"7 2 * * *" ] || [ "${SCHEDULE_EXPRESSION}" = "7 5 * * *"', workflow)
 
     def test_removed_sites_are_cleaned_without_losing_deduplication(self):
         db = sqlite3.connect(":memory:")
@@ -156,6 +170,32 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual([run["id"] for run in payload["runs"]], ["news-run"])
         self.assertEqual(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0], 2)
 
+    def test_state_payload_keeps_a_separate_report_quota_for_each_category(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+            CREATE TABLE sites(id TEXT PRIMARY KEY,name TEXT,home_url TEXT,category TEXT);
+            CREATE TABLE channels(id INTEGER PRIMARY KEY,site_id TEXT,kind TEXT,url TEXT,baseline_at TEXT,last_error TEXT,last_ok_at TEXT);
+            CREATE TABLE reports(id INTEGER PRIMARY KEY,site_id TEXT,created_at TEXT,channels TEXT);
+            CREATE TABLE runs(id TEXT PRIMARY KEY,started_at TEXT,category TEXT);
+            INSERT INTO sites VALUES('news','News','https://news.example','新闻');
+            INSERT INTO sites VALUES('central','Central','https://central.example','央行');
+            INSERT INTO channels VALUES(1,'news','homepage','https://news.example',NULL,NULL,NULL);
+            INSERT INTO channels VALUES(2,'central','homepage','https://central.example',NULL,NULL,NULL);
+            INSERT INTO reports VALUES(3000,'central','2026-11-01T00:00:00+00:00','[]');
+            INSERT INTO runs VALUES('central-run','2026-11-01T00:00:00+00:00','央行');
+        """)
+        db.executemany(
+            "INSERT INTO reports VALUES(?,?,?,'[]')",
+            [(index, "news", f"2026-11-02T00:{index % 60:02d}:00+00:00") for index in range(1, 2002)],
+        )
+        with mock.patch.object(app, "connect", return_value=db):
+            payload = app.state_payload()
+        counts = {category: sum(row["category"] == category for row in payload["reports"]) for category in app.CATEGORIES}
+        self.assertEqual(counts["新闻"], app.REPORTS_PER_CATEGORY)
+        self.assertEqual(counts["央行"], 1)
+        self.assertIn("central-run", {row["id"] for row in payload["runs"]})
+
     def test_research_categories_allow_publication_paths(self):
         url = "https://example.com/category/reports"
         self.assertFalse(app.likely_page(url, "https://example.com/", "新闻"))
@@ -164,6 +204,12 @@ class MonitorTests(unittest.TestCase):
 
     def test_canonical_url_removes_tracking_and_fragment(self):
         self.assertEqual(app.canonical_url("HTTPS://Example.com/a/?utm_source=x&b=2#top"), "https://example.com/a?b=2")
+
+    def test_fetch_retries_a_transient_timeout_once(self):
+        with mock.patch.object(app.urllib.request, "urlopen", side_effect=TimeoutError("timed out")) as opener, mock.patch.object(app.time, "sleep"):
+            result = app.fetch("https://example.com/feed")
+        self.assertFalse(result.ok)
+        self.assertEqual(opener.call_count, app.FETCH_ATTEMPTS)
 
     def test_http_https_switch_is_not_treated_as_new(self):
         old = {app.url_fingerprint("https://example.com/story")}

@@ -33,6 +33,7 @@ HOST = "127.0.0.1"
 PORT = 8765
 MAX_WORKERS = 12
 TIMEOUT = 7
+FETCH_ATTEMPTS = 2
 MAX_BODY = 12 * 1024 * 1024
 MAX_ITEMS_PER_CHANNEL = 10_000
 MAX_SITEMAPS_PER_SITE = 8
@@ -43,6 +44,8 @@ MAX_ENRICH_PER_REFRESH = 160
 TRANSLATION_MIN_INTERVAL = 0.8
 TITLE_FETCH_LIMIT = 2 * 1024 * 1024
 RETENTION_DAYS = 3
+REPORTS_PER_CATEGORY = 2_000
+RUNS_PER_CATEGORY = 30
 USER_AGENT = "Mozilla/5.0 (compatible; LocalNewsMonitor/1.0; +http://localhost)"
 
 translation_request_lock = threading.Lock()
@@ -270,7 +273,7 @@ EXPLICIT_CHANNELS = [
     ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page-resources/publications/review"),
     ("st-louis-fed", "feed", "https://www.stlouisfed.org/rss/page%20resources/podcasts/timely-topics"),
     ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news"),
-    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/publications"),
+    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news/publications"),
     *(("bank-of-england", "feed", url) for url in BANK_OF_ENGLAND_FEEDS),
     ("ecb", "homepage", "https://www.ecb.europa.eu/press/html/index.en.html"),
     ("ecb", "homepage", "https://www.ecb.europa.eu/pub/html/index.en.html"),
@@ -304,7 +307,7 @@ TARGETED_BACKFILLS = (
 OBSOLETE_CHANNELS = [
     ("itif", "homepage", "https://itif.org/"),
     ("reuters", "sitemap", "https://www.reuters.com/sitemap/2026-07/"),
-    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/news/publications"),
+    ("bank-of-england", "homepage", "https://www.bankofengland.co.uk/publications"),
     ("brookings", "feed", "https://www.brookings.edu/comments/feed"),
     ("brookings", "feed", "https://www.brookings.edu/feed"),
     ("fxstreet", "sitemap", "https://www.fxstreet.com/sitemap-all.xml"),
@@ -563,16 +566,24 @@ class FetchResult:
 
 def fetch(url: str, max_body: int = MAX_BODY) -> FetchResult:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/rss+xml,application/atom+xml,application/xml,text/xml,*/*;q=0.5", "Accept-Encoding": "gzip"})
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            body = resp.read(max_body + 1)
-            if len(body) > max_body:
-                body = body[:max_body]
-            if resp.headers.get("Content-Encoding", "").lower() == "gzip":
-                body = gzip.decompress(body)
-            return FetchResult(True, resp.url, resp.headers.get_content_type(), body)
-    except Exception as exc:
-        return FetchResult(False, url, "", error=f"{type(exc).__name__}: {exc}"[:500])
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                body = resp.read(max_body + 1)
+                if len(body) > max_body:
+                    body = body[:max_body]
+                if resp.headers.get("Content-Encoding", "").lower() == "gzip":
+                    body = gzip.decompress(body)
+                return FetchResult(True, resp.url, resp.headers.get_content_type(), body)
+        except Exception as exc:
+            transient = isinstance(exc, TimeoutError) or (
+                isinstance(exc, urllib.error.URLError) and not isinstance(exc, urllib.error.HTTPError)
+            )
+            if transient and attempt + 1 < FETCH_ATTEMPTS:
+                time.sleep(0.2)
+                continue
+            return FetchResult(False, url, "", error=f"{type(exc).__name__}: {exc}"[:500])
+    raise AssertionError("unreachable")
 
 
 def decode(body: bytes) -> str:
@@ -1454,8 +1465,20 @@ def state_payload() -> dict:
           WHERE s.category IN ({placeholders}) GROUP BY s.id ORDER BY s.name
         """, CATEGORIES)]
         channels = [dict(r) for r in db.execute(f"SELECT c.*,s.name site_name,s.category FROM channels c JOIN sites s ON s.id=c.site_id WHERE s.category IN ({placeholders}) ORDER BY s.category,s.name,c.kind,c.url", CATEGORIES)]
-        reports = [dict(r) for r in db.execute(f"SELECT r.*,s.name site_name,s.category FROM reports r JOIN sites s ON s.id=r.site_id WHERE s.category IN ({placeholders}) ORDER BY r.created_at DESC,r.id DESC LIMIT 2000", CATEGORIES)]
-        runs = [dict(r) for r in db.execute(f"SELECT * FROM runs WHERE category IN ({placeholders}) ORDER BY started_at DESC LIMIT 30", CATEGORIES)]
+        reports = []
+        runs = []
+        for category in CATEGORIES:
+            reports.extend(dict(r) for r in db.execute(
+                "SELECT r.*,s.name site_name,s.category FROM reports r JOIN sites s ON s.id=r.site_id "
+                "WHERE s.category=? ORDER BY r.created_at DESC,r.id DESC LIMIT ?",
+                (category, REPORTS_PER_CATEGORY),
+            ))
+            runs.extend(dict(r) for r in db.execute(
+                "SELECT * FROM runs WHERE category=? ORDER BY started_at DESC LIMIT ?",
+                (category, RUNS_PER_CATEGORY),
+            ))
+        reports.sort(key=lambda row: (row["created_at"], row["id"]), reverse=True)
+        runs.sort(key=lambda row: row["started_at"], reverse=True)
     for r in reports:
         r["channels"] = json.loads(r["channels"])
     return {"refresh": dict(refresh_state), "sites": sites, "channels": channels, "reports": reports, "runs": runs}
