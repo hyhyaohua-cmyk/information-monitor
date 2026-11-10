@@ -211,6 +211,13 @@ class MonitorTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(opener.call_count, app.FETCH_ATTEMPTS)
 
+    def test_richmond_feed_uses_extended_timeout(self):
+        row = {"id": 1, "site_id": "richmond-fed", "kind": "feed", "url": "https://www.richmondfed.org/?cc_view=rss"}
+        result = app.FetchResult(False, row["url"], "", error="test")
+        with mock.patch.object(app, "fetch", return_value=result) as fetcher:
+            app.collect_channel(row, "https://www.richmondfed.org/")
+        fetcher.assert_called_once_with(row["url"], timeout=20)
+
     def test_http_https_switch_is_not_treated_as_new(self):
         old = {app.url_fingerprint("https://example.com/story")}
         candidates, hashes = app.unseen_channel_items({"http://example.com/story": "Story"}, old)
