@@ -6,8 +6,9 @@ on:
     - cron: '15 2-10 * * *'
     - cron: '15 15 * * *'
     - cron: '15 22 * * *'
-    # 智库和央行每天北京时间 10:00 刷新。
-    - cron: '0 2 * * *'
+    # 智库和央行每天北京时间 10:07 刷新，避开 GitHub 整点拥堵；13:07 再补偿刷新一次。
+    - cron: '7 2 * * *'
+    - cron: '7 5 * * *'
   workflow_dispatch:
     inputs:
       category:
@@ -58,7 +59,7 @@ jobs:
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             categories="${MANUAL_CATEGORY}"
-          elif [ "${SCHEDULE_EXPRESSION}" = "0 2 * * *" ]; then
+          elif [ "${SCHEDULE_EXPRESSION}" = "7 2 * * *" ] || [ "${SCHEDULE_EXPRESSION}" = "7 5 * * *" ]; then
             categories="智库 央行"
           else
             categories="新闻"
