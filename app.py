@@ -564,11 +564,11 @@ class FetchResult:
     error: str = ""
 
 
-def fetch(url: str, max_body: int = MAX_BODY) -> FetchResult:
+def fetch(url: str, max_body: int = MAX_BODY, timeout: int = TIMEOUT) -> FetchResult:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/rss+xml,application/atom+xml,application/xml,text/xml,*/*;q=0.5", "Accept-Encoding": "gzip"})
     for attempt in range(FETCH_ATTEMPTS):
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read(max_body + 1)
                 if len(body) > max_body:
                     body = body[:max_body]
@@ -1209,7 +1209,8 @@ def discover_for_site(site: sqlite3.Row) -> None:
 
 
 def collect_channel(row: sqlite3.Row, home_url: str) -> tuple[int, bool, dict[str, str], set[str], dict[str, str], str]:
-    result = fetch(row["url"])
+    timeout = 20 if row["site_id"] == "richmond-fed" and row["kind"] == "feed" else TIMEOUT
+    result = fetch(row["url"], timeout=timeout)
     if not result.ok:
         return row["id"], False, {}, set(), {}, result.error
     try:
